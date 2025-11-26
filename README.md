@@ -14,11 +14,17 @@
 
 ### 方法1: 実行可能ファイル（推奨）
 
-1. `shift_system.exe` をダブルクリック
+1. `dist/shift_system/shift_system.exe` をダブルクリック
 2. ブラウザが自動的に開きます
 
 ### 方法2: Pythonから実行
 
+```powershell
+# 依存パッケージのインストール
+pip install -r requirements.txt
+
+# アプリケーションの起動
+streamlit run main.py
 ```
 
 または、`run.bat` をダブルクリック
@@ -48,32 +54,35 @@
 - **最適化エンジン**: PuLP 2.7.0
 - **可視化**: Plotly, Pandas
 
-## ディレクトリ構造
+## 開発環境セットアップ
 
-```
-shift/
+Pythonから実行する場合の手順:
+
+### 1. リポジトリのクローン
+
+```bash
 git clone <repository-url>
-cd shift
+cd shift-scheduler
 ```
 
-#### 2. 依存パッケージのインストール
+### 2. 依存パッケージのインストール
+
 ```powershell
 pip install -r requirements.txt
 ```
 
-#### 3. アプリケーションの起動
+### 3. アプリケーションの起動
+
 ```powershell
 streamlit run main.py
 ```
 
-ブラウザで http://localhost:8501 が自動的に開きます。
+ブラウザで <http://localhost:8501> が自動的に開きます。
 
-## 📁 プロジェクト構成
+## プロジェクト構成
 
-```
-shift_app/
-```
-shift/
+```text
+shift-scheduler/
 ├── main.py                 # アプリケーションエントリーポイント
 ├── requirements.txt        # Python依存関係
 ├── init_sample_data.py     # サンプルデータ投入スクリプト
