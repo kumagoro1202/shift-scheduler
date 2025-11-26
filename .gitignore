@@ -37,7 +37,7 @@ env/
 
 # PyInstaller
 *.manifest
-*.spec
+# build.specは保持
 
 # Database
 *.db
