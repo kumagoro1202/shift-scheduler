@@ -8,15 +8,29 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 # データベースファイルのパス
-# PyInstallerでビルドされた場合は実行ファイルと同じディレクトリに配置
+# PyInstallerでビルドされた場合
 if getattr(sys, 'frozen', False):
-    # 実行ファイルのディレクトリ
-    BASE_DIR = Path(sys.executable).parent
+    # PyInstallerの一時フォルダ（読み取り専用）からユーザーディレクトリにコピー
+    if hasattr(sys, '_MEIPASS'):
+        # パッケージ内のデータベーステンプレート
+        TEMPLATE_DB = Path(sys._MEIPASS) / "data" / "shift.db"
+        # ユーザーディレクトリのデータベース（書き込み可能）
+        USER_DATA_DIR = Path.home() / ".shift_scheduler"
+        USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        DB_PATH = USER_DATA_DIR / "shift.db"
+        
+        # 初回起動時: テンプレートをコピー
+        if not DB_PATH.exists() and TEMPLATE_DB.exists():
+            import shutil
+            shutil.copy2(TEMPLATE_DB, DB_PATH)
+    else:
+        # フォールバック
+        BASE_DIR = Path(sys.executable).parent
+        DB_PATH = BASE_DIR / "data" / "shift.db"
 else:
     # 開発環境
     BASE_DIR = Path(__file__).parent.parent
-
-DB_PATH = BASE_DIR / "data" / "shift.db"
+    DB_PATH = BASE_DIR / "data" / "shift.db"
 
 
 def get_connection():

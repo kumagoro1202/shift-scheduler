@@ -11,6 +11,7 @@ import plotly.express as px
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from database import (
+    init_database,
     get_shifts_by_date_range,
     get_all_employees,
     get_all_time_slots,
@@ -20,6 +21,9 @@ from database import (
 from utils import get_month_range, get_weekday_jp, export_to_excel
 
 st.set_page_config(page_title="シフト表示", page_icon="📋", layout="wide")
+
+# データベース初期化
+init_database()
 
 st.title("📋 シフト表示・編集")
 st.markdown("---")

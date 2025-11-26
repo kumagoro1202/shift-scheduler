@@ -6,9 +6,11 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 
-sys.path.append(str(Path(__file__).parent / "src"))
+# プロジェクトルートのsrcディレクトリをパスに追加
+sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from database import (
+    init_database,
     create_employee,
     create_time_slot,
     set_availability,
@@ -22,6 +24,11 @@ def init_sample_data():
     print("=" * 60)
     print("サンプルデータ初期化")
     print("=" * 60)
+    
+    # データベース初期化（テーブル作成）
+    print("\n🗄️  データベースを初期化中...")
+    init_database()
+    print("  ✅ データベーステーブルを作成しました")
     
     # 既存データチェック
     existing_employees = get_all_employees()
@@ -41,16 +48,16 @@ def init_sample_data():
     
     # サンプル職員データ
     employees = [
-        {"name": "田中 太郎", "skill_score": 90, "email": "tanaka@example.com"},
-        {"name": "佐藤 花子", "skill_score": 85, "email": "sato@example.com"},
-        {"name": "鈴木 一郎", "skill_score": 75, "email": "suzuki@example.com"},
-        {"name": "高橋 次郎", "skill_score": 70, "email": "takahashi@example.com"},
-        {"name": "伊藤 三郎", "skill_score": 80, "email": "ito@example.com"},
+        {"name": "田中 太郎", "skill_score": 90},
+        {"name": "佐藤 花子", "skill_score": 85},
+        {"name": "鈴木 一郎", "skill_score": 75},
+        {"name": "高橋 次郎", "skill_score": 70},
+        {"name": "伊藤 三郎", "skill_score": 80},
     ]
     
     employee_ids = []
     for emp in employees:
-        emp_id = create_employee(emp["name"], emp["skill_score"], emp["email"])
+        emp_id = create_employee(emp["name"], emp["skill_score"])
         if emp_id:
             employee_ids.append(emp_id)
             print(f"  ✅ {emp['name']} (スキル: {emp['skill_score']})")
@@ -63,10 +70,10 @@ def init_sample_data():
     
     # サンプル時間帯データ
     time_slots = [
-        {"name": "早番", "start_time": "08:00", "end_time": "16:00", "required_staff": 2},
-        {"name": "日勤", "start_time": "09:00", "end_time": "17:00", "required_staff": 3},
-        {"name": "遅番", "start_time": "12:00", "end_time": "20:00", "required_staff": 2},
-        {"name": "夜勤", "start_time": "20:00", "end_time": "08:00", "required_staff": 1},
+        {"name": "早番", "start_time": "08:00", "end_time": "16:00", "required_employees": 2},
+        {"name": "日勤", "start_time": "09:00", "end_time": "17:00", "required_employees": 3},
+        {"name": "遅番", "start_time": "12:00", "end_time": "20:00", "required_employees": 2},
+        {"name": "夜勤", "start_time": "20:00", "end_time": "08:00", "required_employees": 1},
     ]
     
     time_slot_ids = []
@@ -75,11 +82,11 @@ def init_sample_data():
             ts["name"],
             ts["start_time"],
             ts["end_time"],
-            ts["required_staff"]
+            ts["required_employees"]
         )
         if ts_id:
             time_slot_ids.append(ts_id)
-            print(f"  ✅ {ts['name']} ({ts['start_time']}-{ts['end_time']}, 必要人数: {ts['required_staff']})")
+            print(f"  ✅ {ts['name']} ({ts['start_time']}-{ts['end_time']}, 必要人数: {ts['required_employees']})")
         else:
             print(f"  ❌ {ts['name']} の登録に失敗")
     
@@ -112,11 +119,12 @@ def init_sample_data():
         
         while current_date <= end_date:
             for emp_id in employee_ids:
-                # 80%の確率で勤務可能に設定（ランダム性を持たせる）
-                import random
-                if random.random() < 0.8:
-                    set_availability(emp_id, current_date.strftime("%Y-%m-%d"), True)
-                    availability_count += 1
+                for ts_id in time_slot_ids:
+                    # 80%の確率で勤務可能に設定（ランダム性を持たせる）
+                    import random
+                    if random.random() < 0.8:
+                        set_availability(emp_id, current_date.strftime("%Y-%m-%d"), ts_id, True)
+                        availability_count += 1
             
             current_date += timedelta(days=1)
         

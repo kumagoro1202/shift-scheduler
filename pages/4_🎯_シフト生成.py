@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from database import (
+    init_database,
     get_all_employees,
     get_all_time_slots,
     is_employee_available,
@@ -19,6 +20,9 @@ from optimizer import generate_shift, calculate_skill_balance
 from utils import get_month_range
 
 st.set_page_config(page_title="シフト生成", page_icon="🎯", layout="wide")
+
+# データベース初期化
+init_database()
 
 st.title("🎯 シフト自動生成")
 st.markdown("---")
@@ -156,12 +160,17 @@ with col_btn1:
                 st.warning("""
                 **失敗の原因として考えられること:**
                 - 職員数が不足している
-                - 勤務可能情報の設定が厳しすぎる
+                - 勤務可能情報で「勤務不可」の設定が多すぎる
                 - 時間帯の必要人数が多すぎる
                 
+                **重要:** 
+                - 勤務可能情報を登録していない場合は、自動的に「全日程勤務可能」として扱われます
+                - 上記の診断情報で、どの日時で人数が不足しているか確認してください
+                
                 **対処方法:**
-                - 勤務可能情報を「全日程可能」に設定してみる
-                - 時間帯の必要人数を減らしてみる
+                1. 「📅 勤務可能情報」ページで勤務不可の設定を見直す
+                2. 「⏰ 時間帯設定」で必要人数を減らす
+                3. 「👥 職員管理」で職員を追加する
                 """)
             else:
                 # データベースに保存
@@ -235,11 +244,14 @@ with st.sidebar:
         1. 職員数は十分か？
            - 最低でも最大必要人数以上
         
-        2. 勤務可能情報は設定済みか？
-           - 未設定の場合は全員可能とみなされる
+        2. 勤務可能情報について
+           - **デフォルトで全日程勤務可能です**
+           - 勤務不可の日時のみ登録してください
+           - 勤務不可が多すぎる場合は失敗します
         
         3. 制約が厳しすぎないか？
-           - 勤務不可が多すぎる場合は失敗する
+           - 各日時で勤務可能な職員数が必要人数以上必要
+           - エラーメッセージで不足している日時を確認
         """)
     
     with st.expander("最適化の仕組み"):

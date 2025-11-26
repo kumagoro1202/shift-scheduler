@@ -60,3 +60,7 @@ desktop.ini
 *.tmp
 *.bak
 *.cache
+
+# Test outputs (keep test scripts themselves)
+tests/*.xlsx
+tests/*.csv

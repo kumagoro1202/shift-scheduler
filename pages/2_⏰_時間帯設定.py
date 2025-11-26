@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from database import (
+    init_database,
     get_all_time_slots,
     create_time_slot,
     update_time_slot,
@@ -15,6 +16,9 @@ from database import (
 )
 
 st.set_page_config(page_title="時間帯設定", page_icon="⏰", layout="wide")
+
+# データベース初期化
+init_database()
 
 st.title("⏰ 時間帯設定")
 st.markdown("---")
@@ -127,12 +131,7 @@ with tab2:
     
     # フォーム送信処理
     if submit_button:
-        # 重複送信防止チェック
-        submission_key = f"time_slot_submitted_{name}_{start_time}_{end_time}"
-        if submission_key in st.session_state and st.session_state[submission_key]:
-            # 既に処理済み
-            pass
-        elif not name.strip():
+        if not name.strip():
             st.error("❌ 時間帯名を入力してください")
         elif not start_time or not end_time:
             st.error("❌ 開始時刻と終了時刻を入力してください")
@@ -153,9 +152,6 @@ with tab2:
                 ):
                     st.success(f"✅ {name}を更新しました")
                     del st.session_state['edit_time_slot_id']
-                    # 送信済みフラグをクリア
-                    if submission_key in st.session_state:
-                        del st.session_state[submission_key]
                     st.rerun()
                 else:
                     st.error("更新に失敗しました")
@@ -170,8 +166,6 @@ with tab2:
                 if time_slot_id:
                     st.success(f"✅ {name}を登録しました")
                     st.balloons()
-                    # 送信済みフラグを設定
-                    st.session_state[submission_key] = True
                     st.rerun()
                 else:
                     st.error("登録に失敗しました")

@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from database import (
+    init_database,
     get_all_employees,
     create_employee,
     update_employee,
@@ -16,6 +17,9 @@ from database import (
 )
 
 st.set_page_config(page_title="職員管理", page_icon="👥", layout="wide")
+
+# データベース初期化
+init_database()
 
 st.title("👥 職員管理")
 st.markdown("---")
@@ -137,12 +141,7 @@ with tab2:
     
     # フォーム送信処理
     if submit_button:
-        # 重複送信防止チェック
-        submission_key = f"employee_submitted_{name}_{skill_score}"
-        if submission_key in st.session_state and st.session_state[submission_key]:
-            # 既に処理済み
-            pass
-        elif not name.strip():
+        if not name.strip():
             st.error("❌ 職員名を入力してください")
         else:
             if edit_mode:
@@ -150,9 +149,6 @@ with tab2:
                 if update_employee(st.session_state['edit_employee_id'], name.strip(), skill_score):
                     st.success(f"✅ {name}さんの情報を更新しました")
                     del st.session_state['edit_employee_id']
-                    # 送信済みフラグをクリア
-                    if submission_key in st.session_state:
-                        del st.session_state[submission_key]
                     st.rerun()
                 else:
                     st.error("更新に失敗しました")
@@ -162,8 +158,6 @@ with tab2:
                 if employee_id:
                     st.success(f"✅ {name}さんを登録しました（ID: {employee_id}）")
                     st.balloons()
-                    # 送信済みフラグを設定
-                    st.session_state[submission_key] = True
                     st.rerun()
                 else:
                     st.error("登録に失敗しました")

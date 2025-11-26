@@ -27,7 +27,7 @@ pip install -r requirements.txt
 streamlit run main.py
 ```
 
-または、`run.bat` をダブルクリック
+または、`scripts/run.bat` をダブルクリック
 
 ## 機能一覧
 
@@ -35,7 +35,7 @@ streamlit run main.py
 |-----|------|
 | 👥 職員管理 | 職員の登録・編集・削除、スキルスコア設定 |
 | ⏰ 時間帯設定 | 勤務時間帯の登録（早番、日勤、遅番など） |
-| 📅 勤務可能情報 | カレンダー形式での勤務可能日入力 |
+| 📅 勤務可能情報 | 勤務不可の日時を登録（未登録は自動的に勤務可能） |
 | 🎯 シフト生成 | 最適化アルゴリズムによる自動シフト作成 |
 | 📋 シフト表示 | カレンダー表示、統計分析、Excel出力 |
 
@@ -79,16 +79,23 @@ streamlit run main.py
 
 ブラウザで <http://localhost:8501> が自動的に開きます。
 
+### 4. テスト実行（オプション）
+
+```powershell
+# シフト生成ロジックのテスト
+python tests/test_new_logic.py
+
+# サンプルデータの投入
+python scripts/init_sample_data.py
+```
+
 ## プロジェクト構成
 
 ```text
 shift-scheduler/
 ├── main.py                 # アプリケーションエントリーポイント
 ├── requirements.txt        # Python依存関係
-├── init_sample_data.py     # サンプルデータ投入スクリプト
-├── run.bat                 # 起動用バッチファイル
-├── build.spec              # PyInstallerビルド設定
-├── shift.db                # SQLiteデータベース（自動生成）
+├── README.md               # このファイル
 ├── src/                    # ソースコード
 │   ├── database.py         # データベース操作
 │   ├── optimizer.py        # シフト最適化エンジン
@@ -99,15 +106,31 @@ shift-scheduler/
 │   ├── 3_📅_勤務可能情報.py
 │   ├── 4_🎯_シフト生成.py
 │   └── 5_📋_シフト表示.py
-├── exports/                # Excel出力先（自動生成）
-└── USER_GUIDE.md           # 利用ガイド
+├── docs/                   # ドキュメント
+│   ├── USER_GUIDE.md       # 利用ガイド
+│   ├── ARCHITECTURE.md     # 設計書
+│   └── IMPLEMENTATION_PLAN.md  # 実装計画
+├── scripts/                # ユーティリティスクリプト
+│   ├── run.bat             # 起動用バッチファイル
+│   ├── launcher.py         # GUIランチャー
+│   ├── init_sample_data.py # サンプルデータ投入
+│   ├── update_time_slots.py # 時間帯更新
+│   └── build.spec          # PyInstallerビルド設定
+├── tests/                  # テストファイル
+│   ├── test_new_logic.py   # シフト生成ロジックテスト
+│   ├── test_overlap.py     # 時間重複チェックテスト
+│   └── check_capacity.py   # 人数チェック
+├── data/                   # データベース（自動生成）
+│   └── shift.db            # SQLiteデータベース
+├── build/                  # ビルド成果物
+└── dist/                   # 配布用実行ファイル
 ```
 
 ## ドキュメント
 
-- **[利用ガイド](USER_GUIDE.md)**: 詳細な操作方法とトラブルシューティング
-- **[設計書](ARCHITECTURE.md)**: システムアーキテクチャと設計思想
-- **[実装計画](IMPLEMENTATION_PLAN.md)**: 開発計画と進捗管理
+- **[利用ガイド](docs/USER_GUIDE.md)**: 詳細な操作方法とトラブルシューティング
+- **[設計書](docs/ARCHITECTURE.md)**: システムアーキテクチャと設計思想
+- **[実装計画](docs/IMPLEMENTATION_PLAN.md)**: 開発計画と進捗管理
 
 ## 実行可能ファイルのビルド
 
@@ -118,17 +141,17 @@ shift-scheduler/
 pip install pyinstaller
 
 # ビルド実行
-pyinstaller build.spec
+pyinstaller scripts/build.spec
 
 # 出力先: dist/shift_system/shift_system.exe
 ```
 
 ## バックアップ
 
-データベースファイル (`shift.db`) を定期的にバックアップしてください:
+データベースファイル (`data/shift.db`) を定期的にバックアップしてください:
 
 ```powershell
-Copy-Item shift.db "shift_backup_$(Get-Date -Format 'yyyyMMdd').db"
+Copy-Item data/shift.db "shift_backup_$(Get-Date -Format 'yyyyMMdd').db"
 ```
 
 ## ライセンス
