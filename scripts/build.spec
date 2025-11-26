@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
+import os
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 import streamlit
@@ -9,8 +10,8 @@ block_cipher = None
 # Streamlitのパス取得
 streamlit_path = Path(streamlit.__file__).parent
 
-# プロジェクトルート
-project_root = Path(__file__).parent.parent
+# プロジェクトルート（build.specがscripts/内にあるため）
+project_root = Path(os.getcwd())
 
 # Streamlitのメタデータとデータファイルを収集
 datas = [

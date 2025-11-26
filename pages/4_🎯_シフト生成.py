@@ -175,6 +175,9 @@ with col_btn1:
             else:
                 # データベースに保存
                 success_count = 0
+                failed_count = 0
+                error_messages = []
+                
                 for shift in result_shifts:
                     shift_id = create_shift(
                         shift['date'],
@@ -183,9 +186,21 @@ with col_btn1:
                     )
                     if shift_id:
                         success_count += 1
+                    else:
+                        failed_count += 1
+                        error_messages.append(
+                            f"{shift['date']} {shift['time_slot_name']} - {shift['employee_name']}"
+                        )
+                
+                if failed_count > 0:
+                    st.warning(f"⚠️ {failed_count}件のシフトが重複のため保存されませんでした")
+                    with st.expander("保存に失敗したシフト"):
+                        for msg in error_messages[:10]:  # 最初の10件のみ表示
+                            st.write(f"- {msg}")
                 
                 st.success(f"✅ シフト生成完了！ {success_count}件のシフトを作成しました")
-                st.balloons()
+                if success_count > 0:
+                    st.balloons()
                 
                 # 統計情報表示
                 stats = calculate_skill_balance(result_shifts)
