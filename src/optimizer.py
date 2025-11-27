@@ -107,16 +107,6 @@ def generate_shift(
                 elif slot_type == 'fullday':
                     # 1日通しは最大2名
                     required = min(ts['required_employees'], 2)
-                # 動的に必要人数を計算
-                required = ts['required_employees']
-                
-                if slot_type == 'morning' or slot_type == 'afternoon':
-                    # 午前・午後は、1日通しの人数に応じて必要人数を調整
-                    # 目標: 各時間帯に合計2名
-                    required = max(0, 2 - fullday_assigned)
-                elif slot_type == 'fullday':
-                    # 1日通しは最大2名
-                    required = min(ts['required_employees'], 2)
                 
                 # 必要人数が0の場合はスキップ
                 if required == 0:
