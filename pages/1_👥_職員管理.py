@@ -16,7 +16,9 @@ from database import (
     get_employee_by_id,
     get_all_work_patterns,
     get_work_patterns_by_type,
-    get_work_patterns_by_employment_type
+    get_work_patterns_by_employment_type,
+    get_all_employment_patterns,
+    get_employment_patterns_by_category
 )
 
 st.set_page_config(page_title="職員管理", page_icon="👥", layout="wide")
@@ -56,7 +58,12 @@ with tab1:
                     st.markdown(f"**職員タイプ**: {emp.get('employee_type', 'TYPE_A')}")
                     st.markdown(f"**雇用形態**: {emp.get('employment_type', '正職員')}")
                     st.markdown(f"**勤務形態**: {emp.get('work_type', 'フルタイム')}")
-                    st.markdown(f"**勤務パターン**: {emp.get('work_pattern', 'P1')}")
+                    
+                    # V3.0対応: employment_pattern_idを優先表示
+                    if emp.get('employment_pattern_id'):
+                        st.markdown(f"**勤務パターン**: {emp.get('employment_pattern_id')} (V3)")
+                    else:
+                        st.markdown(f"**勤務パターン**: {emp.get('work_pattern', 'P1')}")
                     
                     # スキルスコア表示
                     st.markdown("**スキルスコア**:")
@@ -163,18 +170,47 @@ with tab2:
         )
         
         # 勤務パターンの選択
-        patterns = get_work_patterns_by_type(work_type)
-        if patterns:
-            default_pattern = employee.get('work_pattern', 'P1') if employee else 'P1'
-            pattern_ids = [p['id'] for p in patterns]
-            work_pattern = st.selectbox(
-                "勤務パターン *",
-                pattern_ids,
-                format_func=lambda x: next((f"{p['name']} ({p['start_time']}-{p['end_time']})" for p in patterns if p['id'] == x), x),
-                index=pattern_ids.index(default_pattern) if default_pattern in pattern_ids else 0
-            )
+        # V3.0対応: employment_patternsを優先的に使用
+        all_emp_patterns = get_all_employment_patterns()
+        
+        if all_emp_patterns:
+            # V3.0方式: employment_patterns使用
+            if employment_type == "正職員":
+                if work_type == "フルタイム":
+                    available_patterns = [p for p in all_emp_patterns if p['category'] == 'full_time']
+                else:  # 時短勤務
+                    available_patterns = [p for p in all_emp_patterns if p['category'] == 'short_time']
+            else:
+                available_patterns = [p for p in all_emp_patterns if p['category'] == 'part_time']
+            
+            default_pattern_id = employee.get('employment_pattern_id', 'full_early') if employee else 'full_early'
+            pattern_ids = [p['id'] for p in available_patterns]
+            
+            if pattern_ids:
+                employment_pattern_id = st.selectbox(
+                    "勤務パターン * (V3.0)",
+                    pattern_ids,
+                    format_func=lambda x: next((f"{p['name']} ({p['start_time']}-{p['end_time']})" for p in available_patterns if p['id'] == x), x),
+                    index=pattern_ids.index(default_pattern_id) if default_pattern_id in pattern_ids else 0
+                )
+            else:
+                employment_pattern_id = 'full_early'
+                st.warning("⚠️ 利用可能な勤務パターンがありません")
         else:
-            work_pattern = st.text_input("勤務パターン *", value=employee.get('work_pattern', 'P1') if employee else 'P1')
+            # V2.0互換: work_patterns使用
+            employment_pattern_id = None
+            patterns = get_work_patterns_by_type(work_type)
+            if patterns:
+                default_pattern = employee.get('work_pattern', 'P1') if employee else 'P1'
+                pattern_ids = [p['id'] for p in patterns]
+                work_pattern = st.selectbox(
+                    "勤務パターン *",
+                    pattern_ids,
+                    format_func=lambda x: next((f"{p['name']} ({p['start_time']}-{p['end_time']})" for p in patterns if p['id'] == x), x),
+                    index=pattern_ids.index(default_pattern) if default_pattern in pattern_ids else 0
+                )
+            else:
+                work_pattern = st.text_input("勤務パターン *", value=employee.get('work_pattern', 'P1') if employee else 'P1')
         
         st.markdown("---")
         st.subheader("スキルスコア（0〜100）")
@@ -242,20 +278,36 @@ with tab2:
         if not name.strip():
             st.error("❌ 職員名を入力してください")
         else:
+            # V3.0対応: employment_pattern_idを設定
+            if all_emp_patterns:
+                update_params = {
+                    'name': name.strip(),
+                    'employee_type': employee_type,
+                    'employment_type': employment_type,
+                    'work_type': work_type,
+                    'employment_pattern_id': employment_pattern_id,
+                    'skill_reha_room': skill_reha,
+                    'skill_reception_am': skill_am,
+                    'skill_reception_pm': skill_pm,
+                    'skill_flexibility': skill_flex
+                }
+            else:
+                # V2.0互換
+                update_params = {
+                    'name': name.strip(),
+                    'employee_type': employee_type,
+                    'employment_type': employment_type,
+                    'work_type': work_type,
+                    'work_pattern': work_pattern,
+                    'skill_reha_room': skill_reha,
+                    'skill_reception_am': skill_am,
+                    'skill_reception_pm': skill_pm,
+                    'skill_flexibility': skill_flex
+                }
+            
             if edit_mode:
                 # 更新
-                if update_employee(
-                    st.session_state['edit_employee_id'],
-                    name=name.strip(),
-                    employee_type=employee_type,
-                    employment_type=employment_type,
-                    work_type=work_type,
-                    work_pattern=work_pattern,
-                    skill_reha_room=skill_reha,
-                    skill_reception_am=skill_am,
-                    skill_reception_pm=skill_pm,
-                    skill_flexibility=skill_flex
-                ):
+                if update_employee(st.session_state['edit_employee_id'], **update_params):
                     st.success(f"✅ {name}さんの情報を更新しました")
                     del st.session_state['edit_employee_id']
                     st.rerun()
@@ -263,17 +315,7 @@ with tab2:
                     st.error("更新に失敗しました")
             else:
                 # 新規登録
-                employee_id = create_employee(
-                    name=name.strip(),
-                    employee_type=employee_type,
-                    employment_type=employment_type,
-                    work_type=work_type,
-                    work_pattern=work_pattern,
-                    skill_reha_room=skill_reha,
-                    skill_reception_am=skill_am,
-                    skill_reception_pm=skill_pm,
-                    skill_flexibility=skill_flex
-                )
+                employee_id = create_employee(**update_params)
                 if employee_id:
                     st.success(f"✅ {name}さんを登録しました（ID: {employee_id}）")
                     st.balloons()

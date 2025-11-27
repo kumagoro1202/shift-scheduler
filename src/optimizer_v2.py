@@ -1,10 +1,12 @@
 """
 シフト最適化エンジン V2.0
 4項目スキルスコア、職員タイプ制約、パート職員特殊ルール対応
+V3.0対応: availability_checkerを使用した勤務可否判定
 """
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import pandas as pd
+from availability_checker import is_employee_available
 
 
 def check_time_overlap(ts1: Dict[str, Any], ts2: Dict[str, Any]) -> bool:
@@ -260,9 +262,17 @@ def generate_shift_v2(
                     if conflicting_shift:
                         continue
                     
-                    # 勤務可能かチェック
-                    if availability_func and not availability_func(emp['id'], date, ts['id']):
-                        continue
+                    # V3.0: availability_checkerを使用した勤務可否チェック
+                    # availability_funcが指定されている場合は従来の方法（V2互換）
+                    # 指定されていない場合はavailability_checkerを使用（V3）
+                    if availability_func:
+                        # V2互換モード: 従来のavailability_func使用
+                        if not availability_func(emp['id'], date, ts['id']):
+                            continue
+                    else:
+                        # V3モード: availability_checkerを使用
+                        if not is_employee_available(emp, date, ts):
+                            continue
                     
                     available_employees.append(emp)
                 
