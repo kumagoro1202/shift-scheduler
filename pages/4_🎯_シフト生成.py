@@ -16,7 +16,7 @@ from database import (
     create_shift,
     delete_shifts_by_date_range
 )
-from optimizer import generate_shift, calculate_skill_balance
+from optimizer_v2 import generate_shift_v2, calculate_skill_balance_v2
 from utils import get_month_range
 
 st.set_page_config(page_title="シフト生成", page_icon="🎯", layout="wide")
@@ -126,6 +126,23 @@ st.markdown("---")
 # 生成オプション
 st.subheader("🔧 オプション")
 
+# 最適化モード選択
+optimization_mode = st.selectbox(
+    "最適化モード",
+    options=["balance", "skill", "days"],
+    format_func=lambda x: {
+        "balance": "⚖️ バランス（勤務回数とスキルの両方を考慮）",
+        "skill": "🎯 スキル重視（目標スキルスコアに近づける）",
+        "days": "📅 日数重視（勤務回数の均等化を優先）"
+    }[x],
+    index=0,
+    help="""
+    **バランス**: 勤務回数とスキルスコアの両方を考慮して最適化します（推奨）
+    **スキル重視**: 各時間帯の目標スキルスコアに近づけることを優先します
+    **日数重視**: 職員の勤務回数をできるだけ均等にすることを優先します
+    """
+)
+
 overwrite = st.checkbox(
     "既存のシフトを上書きする",
     value=True,
@@ -146,13 +163,14 @@ with col_btn1:
                 if deleted > 0:
                     st.info(f"🗑️ 既存のシフト {deleted}件を削除しました")
             
-            # 最適化実行
-            result_shifts = generate_shift(
+            # 最適化実行（V2エンジン）
+            result_shifts = generate_shift_v2(
                 employees=employees,
                 time_slots=time_slots,
                 start_date=start_date,
                 end_date=end_date,
-                availability_func=is_employee_available
+                availability_func=is_employee_available,
+                optimization_mode=optimization_mode
             )
             
             if result_shifts is None:
@@ -202,8 +220,8 @@ with col_btn1:
                 if success_count > 0:
                     st.balloons()
                 
-                # 統計情報表示
-                stats = calculate_skill_balance(result_shifts)
+                # 統計情報表示（V2）
+                stats = calculate_skill_balance_v2(result_shifts, time_slots)
                 
                 st.markdown("### 📊 生成結果の統計")
                 
@@ -239,13 +257,47 @@ with col_btn2:
 with st.sidebar:
     st.markdown("### 💡 ヘルプ")
     
+    with st.expander("最適化モードについて"):
+        st.markdown("""
+        **⚖️ バランス（推奨）**:
+        - 勤務回数とスキルの両方を考慮
+        - 最もバランスの取れた結果
+        
+        **🎯 スキル重視**:
+        - 各時間帯の目標スキルスコアに近づける
+        - 特定の時間帯に高スキル職員が必要な場合
+        
+        **📅 日数重視**:
+        - 職員の勤務回数をできるだけ均等に
+        - 公平性を最優先する場合
+        """)
+    
+    with st.expander("V2.0の新機能"):
+        st.markdown("""
+        **4項目スキルスコア対応**:
+        - リハ室スキル
+        - 受付午前スキル
+        - 受付午後スキル
+        - 総合対応力
+        
+        **職員タイプ制約**:
+        - TYPE_A: リハ室・受付両方可能
+        - TYPE_B: 受付のみ
+        - TYPE_C: リハ室のみ（正職員）
+        - TYPE_D: リハ室のみ（パート）
+        
+        **重み付き最適化**:
+        - 時間帯ごとに重要度を設定可能
+        - 目標スキルスコアに基づく最適化
+        """)
+    
     with st.expander("シフト生成について"):
         st.markdown("""
         **自動最適化:**
-        - 各時間帯のスキルが均等になるよう調整
-        - 必要人数を必ず満たす
+        - 各時間帯のスキルが目標値に近づくよう調整
+        - 必要人数（最小〜最大）の範囲で最適化
         - 勤務可能時間のみ割り当て
-        - 1人1日1シフトまで
+        - 時間が重なるシフトは割り当てない
         
         **処理時間:**
         - 5名×30日: 数秒〜10秒程度
@@ -257,7 +309,8 @@ with st.sidebar:
         **チェックポイント:**
         
         1. 職員数は十分か？
-           - 最低でも最大必要人数以上
+           - 最低でも最小必要人数以上
+           - 職員タイプとエリアの整合性
         
         2. 勤務可能情報について
            - **デフォルトで全日程勤務可能です**

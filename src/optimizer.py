@@ -1,32 +1,20 @@
 """
 シフト最適化エンジン
+V2.0エンジンへのラッパー（後方互換性維持）
 """
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import pandas as pd
 import random
 
-
-def check_time_overlap(ts1: Dict[str, Any], ts2: Dict[str, Any]) -> bool:
-    """2つの時間帯が重なっているかチェック"""
-    # 時刻を分に変換
-    def time_to_minutes(time_str: str) -> int:
-        h, m = map(int, time_str.split(':'))
-        return h * 60 + m
-    
-    start1 = time_to_minutes(ts1['start_time'])
-    end1 = time_to_minutes(ts1['end_time'])
-    start2 = time_to_minutes(ts2['start_time'])
-    end2 = time_to_minutes(ts2['end_time'])
-    
-    # 夜勤など日をまたぐ場合の処理
-    if end1 < start1:  # ts1が日をまたぐ
-        end1 += 24 * 60
-    if end2 < start2:  # ts2が日をまたぐ
-        end2 += 24 * 60
-    
-    # 重複チェック
-    return not (end1 <= start2 or end2 <= start1)
+# V2エンジンをインポート
+from .optimizer_v2 import (
+    check_time_overlap,
+    calculate_skill_score,
+    can_assign_to_area,
+    generate_shift_v2,
+    calculate_skill_balance_v2
+)
 
 
 def generate_shift(
@@ -37,7 +25,7 @@ def generate_shift(
     availability_func=None
 ) -> Optional[List[Dict[str, Any]]]:
     """
-    シフトを最適化して生成（グリーディアルゴリズム）
+    シフトを最適化して生成（V1互換ラッパー）
     
     Args:
         employees: 職員リスト
@@ -49,55 +37,46 @@ def generate_shift(
     Returns:
         生成されたシフトのリスト（失敗時はNone）
     """
-    try:
-        if not employees or not time_slots:
-            print("❌ エラー: 職員または時間帯が空です")
-            return None
-        
-        print(f"📊 最適化開始: 職員{len(employees)}名, 時間帯{len(time_slots)}個")
+    # V2エンジンを使用（デフォルトはbalanceモード）
+    return generate_shift_v2(
+        employees,
+        time_slots,
+        start_date,
+        end_date,
+        availability_func,
+        optimization_mode='balance'
+    )
+
+
+def calculate_skill_balance(shifts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    シフトのスキルバランスを計算（V1互換ラッパー）
     
-        # 日付リストを生成
-        start = datetime.strptime(start_date, "%Y-%m-%d")
-        end = datetime.strptime(end_date, "%Y-%m-%d")
-        dates = []
-        current = start
-        while current <= end:
-            dates.append(current.strftime("%Y-%m-%d"))
-            current += timedelta(days=1)
-        
-        print(f"📅 期間: {start_date} 〜 {end_date} ({len(dates)}日間)")
-        
-        # 勤務回数を記録
-        work_count = {emp['id']: 0 for emp in employees}
-        shifts = []
-        
-        # 時間帯名から種類を判定（午前、午後、1日通し）
-        def get_slot_type(ts_name: str) -> str:
-            if '午前' in ts_name:
-                return 'morning'
-            elif '午後' in ts_name:
-                return 'afternoon'
-            elif '1日' in ts_name or '通し' in ts_name:
-                return 'fullday'
-            return 'other'
-        
-        # 各日付について処理（時間帯の順序を制御）
-        for date in dates:
-            # まず1日通しを割り当て
-            fullday_slots = [ts for ts in time_slots if get_slot_type(ts['name']) == 'fullday']
-            morning_slots = [ts for ts in time_slots if get_slot_type(ts['name']) == 'morning']
-            afternoon_slots = [ts for ts in time_slots if get_slot_type(ts['name']) == 'afternoon']
-            
-            # 1日通しの割り当て数を記録
-            fullday_assigned = 0
-            
-            # 処理順序: 1日通し → 午前 → 午後
-            ordered_slots = fullday_slots + morning_slots + afternoon_slots
-            
-            for ts in ordered_slots:
-                slot_type = get_slot_type(ts['name'])
-                
-                # 動的に必要人数を計算
+    Returns:
+        統計情報（平均、標準偏差など）
+    """
+    # 時間帯情報が必要なので、簡易的な実装
+    if not shifts:
+        return {
+            'avg_skill': 0,
+            'std_skill': 0,
+            'min_skill': 0,
+            'max_skill': 0
+        }
+    
+    df = pd.DataFrame(shifts)
+    
+    # 日時・時間帯ごとのグループ化
+    grouped = df.groupby(['date', 'time_slot_id'])['skill_score'].sum()
+    
+    return {
+        'avg_skill': grouped.mean(),
+        'std_skill': grouped.std(),
+        'min_skill': grouped.min(),
+        'max_skill': grouped.max(),
+        'balance_score': grouped.std() / grouped.mean() if grouped.mean() > 0 else 0
+    }
+
                 required = ts['required_employees']
                 
                 if slot_type == 'morning' or slot_type == 'afternoon':

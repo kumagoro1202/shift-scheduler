@@ -138,28 +138,105 @@ def get_employee_by_id(employee_id: int) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
-def create_employee(name: str, skill_score: int) -> int:
-    """職員を新規登録"""
+def create_employee(
+    name: str, 
+    skill_score: int = None,
+    employee_type: str = 'TYPE_A',
+    employment_type: str = '正職員',
+    work_type: str = 'フルタイム',
+    work_pattern: str = 'P1',
+    skill_reha_room: int = 0,
+    skill_reception_am: int = 0,
+    skill_reception_pm: int = 0,
+    skill_flexibility: int = 0
+) -> int:
+    """職員を新規登録（V2対応）"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO employees (name, skill_score) VALUES (?, ?)",
-        (name, skill_score)
-    )
+    
+    # V1互換性のため、skill_scoreが指定されている場合は4項目に反映
+    if skill_score is not None:
+        skill_reha_room = skill_score if skill_reha_room == 0 else skill_reha_room
+        skill_reception_am = skill_score if skill_reception_am == 0 else skill_reception_am
+        skill_reception_pm = skill_score if skill_reception_pm == 0 else skill_reception_pm
+        skill_flexibility = skill_score if skill_flexibility == 0 else skill_flexibility
+    else:
+        skill_score = max(skill_reha_room, skill_reception_am, skill_reception_pm, skill_flexibility)
+    
+    cursor.execute("""
+        INSERT INTO employees (
+            name, skill_score, employee_type, employment_type, work_type, work_pattern,
+            skill_reha_room, skill_reception_am, skill_reception_pm, skill_flexibility
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, skill_score, employee_type, employment_type, work_type, work_pattern,
+          skill_reha_room, skill_reception_am, skill_reception_pm, skill_flexibility))
+    
     employee_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return employee_id
 
 
-def update_employee(employee_id: int, name: str, skill_score: int) -> bool:
-    """職員情報を更新"""
+def update_employee(
+    employee_id: int, 
+    name: str = None, 
+    skill_score: int = None,
+    employee_type: str = None,
+    employment_type: str = None,
+    work_type: str = None,
+    work_pattern: str = None,
+    skill_reha_room: int = None,
+    skill_reception_am: int = None,
+    skill_reception_pm: int = None,
+    skill_flexibility: int = None
+) -> bool:
+    """職員情報を更新（V2対応）"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE employees SET name = ?, skill_score = ? WHERE id = ?",
-        (name, skill_score, employee_id)
-    )
+    
+    # 更新するフィールドを動的に構築
+    updates = []
+    params = []
+    
+    if name is not None:
+        updates.append("name = ?")
+        params.append(name)
+    if skill_score is not None:
+        updates.append("skill_score = ?")
+        params.append(skill_score)
+    if employee_type is not None:
+        updates.append("employee_type = ?")
+        params.append(employee_type)
+    if employment_type is not None:
+        updates.append("employment_type = ?")
+        params.append(employment_type)
+    if work_type is not None:
+        updates.append("work_type = ?")
+        params.append(work_type)
+    if work_pattern is not None:
+        updates.append("work_pattern = ?")
+        params.append(work_pattern)
+    if skill_reha_room is not None:
+        updates.append("skill_reha_room = ?")
+        params.append(skill_reha_room)
+    if skill_reception_am is not None:
+        updates.append("skill_reception_am = ?")
+        params.append(skill_reception_am)
+    if skill_reception_pm is not None:
+        updates.append("skill_reception_pm = ?")
+        params.append(skill_reception_pm)
+    if skill_flexibility is not None:
+        updates.append("skill_flexibility = ?")
+        params.append(skill_flexibility)
+    
+    if not updates:
+        conn.close()
+        return False
+    
+    params.append(employee_id)
+    query = f"UPDATE employees SET {', '.join(updates)} WHERE id = ?"
+    
+    cursor.execute(query, params)
     success = cursor.rowcount > 0
     conn.commit()
     conn.close()
@@ -192,28 +269,170 @@ def get_all_time_slots() -> List[Dict[str, Any]]:
     return time_slots
 
 
-def create_time_slot(name: str, start_time: str, end_time: str, required_employees: int = 2) -> int:
-    """時間帯を新規登録"""
+# ========== 勤務パターン管理 ==========
+
+def get_all_work_patterns() -> List[Dict[str, Any]]:
+    """全勤務パターンを取得"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO time_slots (name, start_time, end_time, required_employees) VALUES (?, ?, ?, ?)",
-        (name, start_time, end_time, required_employees)
-    )
+    try:
+        cursor.execute("SELECT * FROM work_patterns ORDER BY id")
+        patterns = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return patterns
+    except sqlite3.OperationalError:
+        # テーブルが存在しない場合は空リストを返す
+        conn.close()
+        return []
+
+
+def get_work_pattern_by_id(pattern_id: str) -> Optional[Dict[str, Any]]:
+    """IDで勤務パターンを取得"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT * FROM work_patterns WHERE id = ?", (pattern_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except sqlite3.OperationalError:
+        conn.close()
+        return None
+
+
+def get_work_patterns_by_type(work_type: str) -> List[Dict[str, Any]]:
+    """勤務形態で勤務パターンをフィルタ"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT * FROM work_patterns WHERE work_type = ? ORDER BY id",
+            (work_type,)
+        )
+        patterns = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return patterns
+    except sqlite3.OperationalError:
+        conn.close()
+        return []
+
+
+def get_work_patterns_by_employment_type(employment_type: str) -> List[Dict[str, Any]]:
+    """雇用形態で勤務パターンをフィルタ"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT * FROM work_patterns WHERE employment_type = ? ORDER BY id",
+            (employment_type,)
+        )
+        patterns = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return patterns
+    except sqlite3.OperationalError:
+        conn.close()
+        return []
+
+
+# ========== 時間帯管理 ==========
+
+
+def create_time_slot(
+    name: str, 
+    start_time: str, 
+    end_time: str, 
+    required_employees: int = 2,
+    area_type: str = '受付',
+    time_period: str = '終日',
+    required_employees_min: int = 1,
+    required_employees_max: int = None,
+    target_skill_score: int = 150,
+    skill_weight: float = 1.0
+) -> int:
+    """時間帯を新規登録（V2対応）"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # required_employees_maxが指定されていない場合はrequired_employeesを使用
+    if required_employees_max is None:
+        required_employees_max = required_employees
+    
+    cursor.execute("""
+        INSERT INTO time_slots (
+            name, start_time, end_time, required_employees,
+            area_type, time_period, required_employees_min, required_employees_max,
+            target_skill_score, skill_weight
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, start_time, end_time, required_employees,
+          area_type, time_period, required_employees_min, required_employees_max,
+          target_skill_score, skill_weight))
+    
     time_slot_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return time_slot_id
 
 
-def update_time_slot(time_slot_id: int, name: str, start_time: str, end_time: str, required_employees: int) -> bool:
-    """時間帯情報を更新"""
+def update_time_slot(
+    time_slot_id: int, 
+    name: str = None, 
+    start_time: str = None, 
+    end_time: str = None, 
+    required_employees: int = None,
+    area_type: str = None,
+    time_period: str = None,
+    required_employees_min: int = None,
+    required_employees_max: int = None,
+    target_skill_score: int = None,
+    skill_weight: float = None
+) -> bool:
+    """時間帯情報を更新（V2対応）"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE time_slots SET name = ?, start_time = ?, end_time = ?, required_employees = ? WHERE id = ?",
-        (name, start_time, end_time, required_employees, time_slot_id)
-    )
+    
+    # 更新するフィールドを動的に構築
+    updates = []
+    params = []
+    
+    if name is not None:
+        updates.append("name = ?")
+        params.append(name)
+    if start_time is not None:
+        updates.append("start_time = ?")
+        params.append(start_time)
+    if end_time is not None:
+        updates.append("end_time = ?")
+        params.append(end_time)
+    if required_employees is not None:
+        updates.append("required_employees = ?")
+        params.append(required_employees)
+    if area_type is not None:
+        updates.append("area_type = ?")
+        params.append(area_type)
+    if time_period is not None:
+        updates.append("time_period = ?")
+        params.append(time_period)
+    if required_employees_min is not None:
+        updates.append("required_employees_min = ?")
+        params.append(required_employees_min)
+    if required_employees_max is not None:
+        updates.append("required_employees_max = ?")
+        params.append(required_employees_max)
+    if target_skill_score is not None:
+        updates.append("target_skill_score = ?")
+        params.append(target_skill_score)
+    if skill_weight is not None:
+        updates.append("skill_weight = ?")
+        params.append(skill_weight)
+    
+    if not updates:
+        conn.close()
+        return False
+    
+    params.append(time_slot_id)
+    query = f"UPDATE time_slots SET {', '.join(updates)} WHERE id = ?"
+    
+    cursor.execute(query, params)
     success = cursor.rowcount > 0
     conn.commit()
     conn.close()
@@ -365,3 +584,107 @@ def set_setting(key: str, value: str) -> bool:
     conn.commit()
     conn.close()
     return True
+
+
+# ========== 休憩スケジュール管理 ==========
+
+def create_break_schedule(
+    shift_id: int,
+    employee_id: int,
+    date: str,
+    break_number: int,
+    break_start_time: str,
+    break_end_time: str
+) -> Optional[int]:
+    """休憩スケジュールを登録"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO break_schedules 
+            (shift_id, employee_id, date, break_number, break_start_time, break_end_time)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (shift_id, employee_id, date, break_number, break_start_time, break_end_time))
+        
+        break_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return break_id
+    except sqlite3.OperationalError:
+        # テーブルが存在しない場合
+        conn.close()
+        return None
+    except sqlite3.IntegrityError:
+        conn.close()
+        return None
+
+
+def get_break_schedules_by_date(date: str) -> List[Dict[str, Any]]:
+    """日付で休憩スケジュールを取得"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT bs.*, e.name as employee_name
+            FROM break_schedules bs
+            JOIN employees e ON bs.employee_id = e.id
+            WHERE bs.date = ?
+            ORDER BY bs.break_start_time
+        """, (date,))
+        schedules = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return schedules
+    except sqlite3.OperationalError:
+        conn.close()
+        return []
+
+
+def get_break_schedules_by_shift(shift_id: int) -> List[Dict[str, Any]]:
+    """シフトIDで休憩スケジュールを取得"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT * FROM break_schedules 
+            WHERE shift_id = ?
+            ORDER BY break_number
+        """, (shift_id,))
+        schedules = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return schedules
+    except sqlite3.OperationalError:
+        conn.close()
+        return []
+
+
+def delete_break_schedules_by_shift(shift_id: int) -> int:
+    """シフトIDで休憩スケジュールを削除"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM break_schedules WHERE shift_id = ?", (shift_id,))
+        count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return count
+    except sqlite3.OperationalError:
+        conn.close()
+        return 0
+
+
+def delete_break_schedules_by_date_range(start_date: str, end_date: str) -> int:
+    """期間指定で休憩スケジュールを削除"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "DELETE FROM break_schedules WHERE date BETWEEN ? AND ?",
+            (start_date, end_date)
+        )
+        count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return count
+    except sqlite3.OperationalError:
+        conn.close()
+        return 0

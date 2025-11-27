@@ -16,9 +16,16 @@ from database import (
     get_all_employees,
     get_all_time_slots,
     delete_shift,
-    create_shift
+    create_shift,
+    get_break_schedules_by_date,
+    get_employee_by_id
 )
 from utils import get_month_range, get_weekday_jp, export_to_excel
+from break_scheduler import (
+    auto_assign_and_save_breaks,
+    validate_reception_coverage,
+    generate_time_intervals
+)
 
 st.set_page_config(page_title="シフト表示", page_icon="📋", layout="wide")
 
@@ -61,7 +68,7 @@ if not shifts:
 st.success(f"✅ {len(shifts)}件のシフトが登録されています")
 
 # タブで表示方法を切り替え
-tab1, tab2, tab3 = st.tabs(["📅 カレンダー表示", "📊 統計・分析", "📥 エクスポート"])
+tab1, tab2, tab3, tab4 = st.tabs(["📅 カレンダー表示", "☕ 休憩時間", "📊 統計・分析", "📥 エクスポート"])
 
 # タブ1: カレンダー表示
 with tab1:
@@ -111,8 +118,100 @@ with tab1:
                 
                 st.markdown("---")
 
-# タブ2: 統計・分析
+# タブ2: 休憩時間管理
 with tab2:
+    st.subheader("☕ 休憩時間管理")
+    
+    st.info("""
+    **休憩時間の自動割り当て:**
+    - フルタイム職員: 1時間 × 2回
+    - 時短勤務職員: 1時間 × 1回
+    - パート職員: 休憩なし
+    - 受付窓口には常に2名以上が実働状態である必要があります
+    """)
+    
+    # 日付選択
+    col_break1, col_break2 = st.columns([2, 3])
+    
+    with col_break1:
+        df = pd.DataFrame(shifts)
+        dates = sorted(df['date'].unique())
+        selected_date = st.selectbox(
+            "日付を選択",
+            options=dates,
+            format_func=lambda x: f"{x} ({get_weekday_jp(x)})"
+        )
+    
+    with col_break2:
+        if st.button("🔄 休憩時間を自動割り当て", type="primary"):
+            # その日のシフトを取得
+            date_shifts = [s for s in shifts if s['date'] == selected_date]
+            
+            # 休憩時間を自動割り当て
+            saved_count, is_valid, warnings = auto_assign_and_save_breaks(
+                selected_date, date_shifts
+            )
+            
+            if saved_count > 0:
+                st.success(f"✅ {saved_count}件の休憩時間を割り当てました")
+            
+            if not is_valid:
+                st.warning("⚠️ 以下の警告があります:")
+                for warning in warnings:
+                    st.warning(warning)
+            
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # 休憩スケジュール表示
+    if selected_date:
+        st.markdown(f"### 📅 {selected_date} の休憩時間")
+        
+        break_schedules = get_break_schedules_by_date(selected_date)
+        
+        if not break_schedules:
+            st.info("この日の休憩スケジュールはまだ設定されていません")
+        else:
+            # タイムライン表示
+            for break_sch in break_schedules:
+                emp = get_employee_by_id(break_sch['employee_id'])
+                
+                col1, col2, col3 = st.columns([2, 3, 2])
+                
+                with col1:
+                    st.write(f"**👤 {emp['name']}**")
+                
+                with col2:
+                    break_info = f"休憩{break_sch['break_number']}: {break_sch['break_start_time']} - {break_sch['break_end_time']}"
+                    st.info(break_info)
+                
+                with col3:
+                    duration = (
+                        datetime.strptime(break_sch['break_end_time'], "%H:%M") -
+                        datetime.strptime(break_sch['break_start_time'], "%H:%M")
+                    ).seconds // 60
+                    st.metric("時間", f"{duration}分")
+            
+            st.markdown("---")
+            
+            # 窓口カバレッジチェック
+            st.markdown("### 🔍 窓口カバレッジチェック")
+            
+            date_shifts = [s for s in shifts if s['date'] == selected_date]
+            is_valid, warnings = validate_reception_coverage(
+                selected_date, date_shifts, break_schedules
+            )
+            
+            if is_valid:
+                st.success("✅ 受付窓口の常駐人数は常に2名以上です")
+            else:
+                st.error("❌ 受付窓口の常駐人数が不足する時間帯があります")
+                for warning in warnings:
+                    st.warning(warning)
+
+# タブ3: 統計・分析
+with tab3:
     st.subheader("📊 シフト統計")
     
     df = pd.DataFrame(shifts)
@@ -213,8 +312,8 @@ with tab2:
     else:
         st.warning("⚠️ スキルにやや偏りがあります")
 
-# タブ3: エクスポート
-with tab3:
+# タブ4: エクスポート
+with tab4:
     st.subheader("📥 データエクスポート")
     
     # Excelエクスポート

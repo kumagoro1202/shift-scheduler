@@ -1,36 +1,59 @@
-# シフト作成プログラム - システム設計書（小規模施設版）
+# シフト作成プログラム - システム設計書 V2.0（小規模施設版）
 
 ## 1. システム概要
 
 **対象**: 5名程度の小規模施設  
-**目的**: 職員の能力を点数化し、各時間帯の能力値が均等になるよう最適化されたシフト表を自動生成  
+**目的**: 職員の4項目スキルと職員タイプを考慮し、各時間帯・業務エリアのスキルバランスが最適化されたシフト表を自動生成  
 **動作環境**: ローカルPC（サーバー不要）
+
+**V2.0の主要改善点**:
+
+- 4項目スキルスコアシステム（リハ室、受付午前/午後、総合対応力）
+- 職員タイプ制約（TYPE_A〜D）による業務エリア制限
+- 勤務形態管理（フルタイム、時短、パート）
+- 休憩ローテーション機能
+- 最適化モード選択（バランス/スキル重視/日数重視）
 
 ## 2. 採用アーキテクチャ
 
 ### 2.1 アーキテクチャパターン
+
 **デスクトップアプリケーション（オールインワン）**
 
 ```
 ┌─────────────────────────────────────────────┐
-│     デスクトップアプリケーション             │
+│     デスクトップアプリケーション V2.0        │
 │                                             │
 │  ┌───────────────────────────────────┐     │
-│  │   UI層 (Streamlit / Tkinter)     │     │
+│  │   UI層 (Streamlit)                │     │
+│  │   - 4項目スキル入力               │     │
+│  │   - 職員タイプ管理               │     │
+│  │   - 休憩時間表示                 │     │
 │  └────────────┬──────────────────────┘     │
 │               │                             │
 │  ┌────────────▼──────────────────────┐     │
 │  │   ビジネスロジック層              │     │
 │  │   (Python)                        │     │
 │  │  ┌─────────────────────────────┐ │     │
-│  │  │ シフト最適化エンジン         │ │     │
-│  │  │ (PuLP - 軽量)               │ │     │
+│  │  │ optimizer_v2.py              │ │     │
+│  │  │  - 4項目スキル評価           │ │     │
+│  │  │  - 職員タイプ制約            │ │     │
+│  │  │  - 3つの最適化モード         │ │     │
+│  │  └─────────────────────────────┘ │     │
+│  │  ┌─────────────────────────────┐ │     │
+│  │  │ break_scheduler.py           │ │     │
+│  │  │  - 休憩時間自動割り当て      │ │     │
+│  │  │  - 窓口カバレッジ検証        │ │     │
 │  │  └─────────────────────────────┘ │     │
 │  └────────────┬──────────────────────┘     │
 │               │                             │
 │  ┌────────────▼──────────────────────┐     │
 │  │   データ層                        │     │
-│  │   (SQLite - ファイルベース)      │     │
+│  │   (SQLite V2.0 - 拡張スキーマ)   │     │
+│  │   - employees (V2拡張)           │     │
+│  │   - time_slots (V2拡張)          │     │
+│  │   - work_patterns (新規)         │     │
+│  │   - break_schedules (新規)       │     │
 │  └───────────────────────────────────┘     │
 │                                             │
 │  ローカルPC (Windows/Mac)                  │
@@ -40,22 +63,25 @@
 ### 2.2 設計の理由
 
 1. **Pythonスタンドアロン**: インストール簡単、依存関係が少ない
-2. **SQLite**: サーバー不要、ファイルベースで管理が容易
+2. **SQLite**: サーバー不要、ファイルベースで管理が容易、マイグレーション対応
 3. **Streamlit**: Webブラウザで動作するがローカル完結、開発が高速
 4. **PuLP**: OR-Toolsより軽量で小規模データに最適
+5. **モジュール化**: optimizer_v2とbreak_schedulerを分離し保守性向上
 
 ## 3. 技術スタック（小規模・シンプル構成）
 
 ### 3.1 コアテクノロジー
+
 | 技術 | バージョン | 用途 |
 |------|-----------|------|
 | Python | 3.11+ | メイン言語 |
 | Streamlit | 1.28+ | UIフレームワーク |
-| SQLite | 3.x | データベース（ファイルベース） |
+| SQLite | 3.x | データベース（ファイルベース、V2.0スキーマ） |
 | PuLP | 2.7+ | 最適化ソルバー |
 | Pandas | 2.x | データ操作 |
 
 ### 3.2 補助ライブラリ
+
 | 技術 | バージョン | 用途 |
 |------|-----------|------|
 | plotly | 5.x | グラフ・チャート表示 |
@@ -63,6 +89,7 @@
 | python-dateutil | 2.x | 日付処理 |
 
 ### 3.3 開発ツール
+
 | 技術 | 用途 |
 |------|------|
 | PyInstaller | 実行ファイル化（.exe作成） |
@@ -70,34 +97,112 @@
 | black | コードフォーマッター |
 
 ### 3.4 動作環境
+
 - **OS**: Windows 10/11, macOS 12+, Linux
 - **メモリ**: 4GB以上推奨
 - **ストレージ**: 500MB以上の空き容量
 - **ブラウザ**: Chrome, Firefox, Edge（Streamlit表示用）
 
-## 4. データモデル設計（簡素版）
+## 4. データモデル設計 V2.0（拡張版）
 
 ### 4.1 主要テーブル（SQLite）
 
-#### employees（職員）
+#### employees（職員）- V2.0拡張
+
 ```sql
 CREATE TABLE employees (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    skill_score INTEGER NOT NULL,  -- 1-100
+    
+    -- V2.0追加: 職員タイプと勤務形態
+    employee_type TEXT DEFAULT 'TYPE_A' 
+        CHECK(employee_type IN ('TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D')),
+    employment_type TEXT DEFAULT '正職員' 
+        CHECK(employment_type IN ('正職員', 'パート')),
+    work_type TEXT DEFAULT 'フルタイム' 
+        CHECK(work_type IN ('フルタイム', '時短勤務', 'パートタイム')),
+    work_pattern TEXT DEFAULT 'P1',
+    
+    -- V2.0追加: 4項目スキルスコア
+    skill_reha_room INTEGER DEFAULT 0 
+        CHECK(skill_reha_room >= 0 AND skill_reha_room <= 100),
+    skill_reception_am INTEGER DEFAULT 0 
+        CHECK(skill_reception_am >= 0 AND skill_reception_am <= 100),
+    skill_reception_pm INTEGER DEFAULT 0 
+        CHECK(skill_reception_pm >= 0 AND skill_reception_pm <= 100),
+    skill_flexibility INTEGER DEFAULT 0 
+        CHECK(skill_flexibility >= 0 AND skill_flexibility <= 100),
+    
+    -- 旧フィールド（互換性のため保持）
+    skill_score INTEGER NOT NULL DEFAULT 0,
+    
     is_active BOOLEAN DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-#### time_slots（時間帯）
+#### time_slots（時間帯）- V2.0拡張
+
 ```sql
 CREATE TABLE time_slots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,  -- 例: "午前", "午後", "夜間"
-    start_time TEXT NOT NULL,  -- HH:MM
-    end_time TEXT NOT NULL,    -- HH:MM
-    required_employees INTEGER DEFAULT 2
+    name TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    
+    -- V2.0追加: 業務エリアと時間区分
+    area_type TEXT DEFAULT '受付' 
+        CHECK(area_type IN ('受付', 'リハ室')),
+    time_period TEXT 
+        CHECK(time_period IN ('午前', '午後', '終日')),
+    
+    -- V2.0追加: 必要人数範囲
+    required_employees_min INTEGER DEFAULT 1,
+    required_employees_max INTEGER DEFAULT 2,
+    
+    -- V2.0追加: 最適化パラメータ
+    target_skill_score INTEGER DEFAULT 150,
+    skill_weight REAL DEFAULT 1.0,
+    
+    -- 旧フィールド（互換性のため保持）
+    required_employees INTEGER DEFAULT 2,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### work_patterns（勤務パターン）- V2.0新規
+
+```sql
+CREATE TABLE work_patterns (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    work_type TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    break_hours REAL NOT NULL,
+    break_division INTEGER DEFAULT 1,
+    work_hours REAL NOT NULL,
+    employment_type TEXT NOT NULL
+);
+```
+
+#### break_schedules（休憩スケジュール）- V2.0新規
+
+```sql
+CREATE TABLE break_schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shift_id INTEGER NOT NULL,
+    employee_id INTEGER NOT NULL,
+    date DATE NOT NULL,
+    break_number INTEGER NOT NULL CHECK(break_number IN (1, 2)),
+    break_start_time TEXT NOT NULL,
+    break_end_time TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (shift_id) REFERENCES shifts(id),
+    FOREIGN KEY (employee_id) REFERENCES employees(id)
+);
+```
 );
 ```
 
