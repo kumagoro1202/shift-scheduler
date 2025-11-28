@@ -1,16 +1,18 @@
-# シフト作成プログラム - システム設計書 V2.0（小規模施設版）
+# シフト作成プログラム - システム設計書 V3.0
 
 ## 1. システム概要
 
-**対象**: 5名程度の小規模施設  
+**対象**: 5〜10名程度の小規模施設  
 **目的**: 職員の4項目スキルと職員タイプを考慮し、各時間帯・業務エリアのスキルバランスが最適化されたシフト表を自動生成  
 **動作環境**: ローカルPC（サーバー不要）
 
-**V2.0の主要改善点**:
+**V3.0の主要機能**:
 
 - 4項目スキルスコアシステム（リハ室、受付午前/午後、総合対応力）
 - 職員タイプ制約（TYPE_A〜D）による業務エリア制限
 - 勤務形態管理（フルタイム、時短、パート）
+- 日付単位の休暇管理（運用の簡素化）
+- 診療時間の固定化（システム定義の時間帯）
 - 休憩ローテーション機能
 - 最適化モード選択（バランス/スキル重視/日数重視）
 
@@ -22,12 +24,13 @@
 
 ```
 ┌─────────────────────────────────────────────┐
-│     デスクトップアプリケーション V2.0        │
+│     デスクトップアプリケーション V3.0        │
 │                                             │
 │  ┌───────────────────────────────────┐     │
 │  │   UI層 (Streamlit)                │     │
 │  │   - 4項目スキル入力               │     │
 │  │   - 職員タイプ管理               │     │
+│  │   - 日付単位の休暇管理           │     │
 │  │   - 休憩時間表示                 │     │
 │  └────────────┬──────────────────────┘     │
 │               │                             │
@@ -45,15 +48,22 @@
 │  │  │  - 休憩時間自動割り当て      │ │     │
 │  │  │  - 窓口カバレッジ検証        │ │     │
 │  │  └─────────────────────────────┘ │     │
+│  │  ┌─────────────────────────────┐ │     │
+│  │  │ availability_checker.py      │ │     │
+│  │  │  - 勤務可否判定              │ │     │
+│  │  │  - 休暇考慮                  │ │     │
+│  │  └─────────────────────────────┘ │     │
 │  └────────────┬──────────────────────┘     │
 │               │                             │
 │  ┌────────────▼──────────────────────┐     │
 │  │   データ層                        │     │
-│  │   (SQLite V2.0 - 拡張スキーマ)   │     │
-│  │   - employees (V2拡張)           │     │
-│  │   - time_slots (V2拡張)          │     │
-│  │   - work_patterns (新規)         │     │
-│  │   - break_schedules (新規)       │     │
+│  │   (SQLite V3.0 - 完全版)         │     │
+│  │   - employees (V3拡張)           │     │
+│  │   - employment_patterns (新規)   │     │
+│  │   - employee_absences (新規)     │     │
+│  │   - time_slots (固定化)          │     │
+│  │   - shifts                       │     │
+│  │   - break_schedules              │     │
 │  └───────────────────────────────────┘     │
 │                                             │
 │  ローカルPC (Windows/Mac)                  │
@@ -66,9 +76,10 @@
 2. **SQLite**: サーバー不要、ファイルベースで管理が容易、マイグレーション対応
 3. **Streamlit**: Webブラウザで動作するがローカル完結、開発が高速
 4. **PuLP**: OR-Toolsより軽量で小規模データに最適
-5. **モジュール化**: optimizer_v2とbreak_schedulerを分離し保守性向上
+5. **モジュール化**: optimizer_v2、break_scheduler、availability_checkerを分離し保守性向上
+6. **固定診療時間**: 時間帯マスタを固定化し運用を簡素化
 
-## 3. 技術スタック（小規模・シンプル構成）
+## 3. 技術スタック
 
 ### 3.1 コアテクノロジー
 
@@ -76,7 +87,7 @@
 |------|-----------|------|
 | Python | 3.11+ | メイン言語 |
 | Streamlit | 1.28+ | UIフレームワーク |
-| SQLite | 3.x | データベース（ファイルベース、V2.0スキーマ） |
+| SQLite | 3.x | データベース（ファイルベース、V3.0スキーマ） |
 | PuLP | 2.7+ | 最適化ソルバー |
 | Pandas | 2.x | データ操作 |
 
@@ -103,142 +114,122 @@
 - **ストレージ**: 500MB以上の空き容量
 - **ブラウザ**: Chrome, Firefox, Edge（Streamlit表示用）
 
-## 4. データモデル設計 V2.0（拡張版）
+## 4. データモデル設計 V3.0
 
 ### 4.1 主要テーブル（SQLite）
 
-#### employees（職員）- V2.0拡張
+#### employees（職員）- V3.0完全版
 
 ```sql
 CREATE TABLE employees (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     
-    -- V2.0追加: 職員タイプと勤務形態
+    -- 職員タイプと勤務形態
     employee_type TEXT DEFAULT 'TYPE_A' 
         CHECK(employee_type IN ('TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D')),
     employment_type TEXT DEFAULT '正職員' 
         CHECK(employment_type IN ('正職員', 'パート')),
-    work_type TEXT DEFAULT 'フルタイム' 
-        CHECK(work_type IN ('フルタイム', '時短勤務', 'パートタイム')),
-    work_pattern TEXT DEFAULT 'P1',
+    employment_pattern_id TEXT REFERENCES employment_patterns(id),
     
-    -- V2.0追加: 4項目スキルスコア
-    skill_reha_room INTEGER DEFAULT 0 
-        CHECK(skill_reha_room >= 0 AND skill_reha_room <= 100),
-    skill_reception_am INTEGER DEFAULT 0 
+    -- 4項目スキルスコア
+    skill_reha INTEGER DEFAULT 50 
+        CHECK(skill_reha >= 0 AND skill_reha <= 100),
+    skill_reception_am INTEGER DEFAULT 50 
         CHECK(skill_reception_am >= 0 AND skill_reception_am <= 100),
-    skill_reception_pm INTEGER DEFAULT 0 
+    skill_reception_pm INTEGER DEFAULT 50 
         CHECK(skill_reception_pm >= 0 AND skill_reception_pm <= 100),
-    skill_flexibility INTEGER DEFAULT 0 
-        CHECK(skill_flexibility >= 0 AND skill_flexibility <= 100),
-    
-    -- 旧フィールド（互換性のため保持）
-    skill_score INTEGER NOT NULL DEFAULT 0,
+    skill_general INTEGER DEFAULT 50 
+        CHECK(skill_general >= 0 AND skill_general <= 100),
     
     is_active BOOLEAN DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+);
+```
 ```
 
-#### time_slots（時間帯）- V2.0拡張
+#### employment_patterns（勤務形態マスタ）- V3.0新規
 
 ```sql
-CREATE TABLE time_slots (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE employment_patterns (
+    id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    category TEXT NOT NULL CHECK(category IN ('full_time', 'short_time', 'part_time')),
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
-    
-    -- V2.0追加: 業務エリアと時間区分
-    area_type TEXT DEFAULT '受付' 
-        CHECK(area_type IN ('受付', 'リハ室')),
-    time_period TEXT 
-        CHECK(time_period IN ('午前', '午後', '終日')),
-    
-    -- V2.0追加: 必要人数範囲
-    required_employees_min INTEGER DEFAULT 1,
-    required_employees_max INTEGER DEFAULT 2,
-    
-    -- V2.0追加: 最適化パラメータ
-    target_skill_score INTEGER DEFAULT 150,
-    skill_weight REAL DEFAULT 1.0,
-    
-    -- 旧フィールド（互換性のため保持）
-    required_employees INTEGER DEFAULT 2,
-    
+    break_hours REAL NOT NULL,
+    work_hours REAL NOT NULL,
+    can_work_afternoon BOOLEAN DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-#### work_patterns（勤務パターン）- V2.0新規
+#### employee_absences（休暇登録）- V3.0新規
 
 ```sql
-CREATE TABLE work_patterns (
+CREATE TABLE employee_absences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER NOT NULL,
+    absence_date DATE NOT NULL,
+    absence_type TEXT NOT NULL CHECK(absence_type IN ('full_day', 'morning', 'afternoon')),
+    reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (employee_id) REFERENCES employees(id),
+    UNIQUE(employee_id, absence_date, absence_type)
+);
+```
+
+#### time_slots（時間帯マスタ - 固定）- V3.0
+
+```sql
+CREATE TABLE time_slots (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    work_type TEXT NOT NULL,
+    day_of_week INTEGER NOT NULL CHECK(day_of_week >= 0 AND day_of_week <= 6),
+    period TEXT NOT NULL CHECK(period IN ('morning', 'afternoon')),
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
-    break_hours REAL NOT NULL,
-    break_division INTEGER DEFAULT 1,
-    work_hours REAL NOT NULL,
-    employment_type TEXT NOT NULL
-);
-```
-
-#### break_schedules（休憩スケジュール）- V2.0新規
-
-```sql
-CREATE TABLE break_schedules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    shift_id INTEGER NOT NULL,
-    employee_id INTEGER NOT NULL,
-    date DATE NOT NULL,
-    break_number INTEGER NOT NULL CHECK(break_number IN (1, 2)),
-    break_start_time TEXT NOT NULL,
-    break_end_time TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (shift_id) REFERENCES shifts(id),
-    FOREIGN KEY (employee_id) REFERENCES employees(id)
-);
-```
+    is_active BOOLEAN DEFAULT 1,
+    required_staff INTEGER DEFAULT 2,
+    area TEXT,
+    target_skill_score INTEGER DEFAULT 150
 );
 ```
 
 #### shifts（シフト）
+
 ```sql
 CREATE TABLE shifts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date DATE NOT NULL,
-    time_slot_id INTEGER,
-    employee_id INTEGER,
-    FOREIGN KEY (time_slot_id) REFERENCES time_slots(id),
-    FOREIGN KEY (employee_id) REFERENCES employees(id),
-    UNIQUE(date, time_slot_id, employee_id)
-);
-```
-
-#### availability（勤務可能情報）
-```sql
-CREATE TABLE availability (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    employee_id INTEGER,
-    date DATE NOT NULL,
-    time_slot_id INTEGER,
-    is_available BOOLEAN DEFAULT 1,
+    employee_id INTEGER NOT NULL,
+    shift_date DATE NOT NULL,
+    time_slot_id TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (employee_id) REFERENCES employees(id),
     FOREIGN KEY (time_slot_id) REFERENCES time_slots(id)
 );
 ```
 
+#### break_schedules（休憩スケジュール）
+
+```sql
+CREATE TABLE break_schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shift_id INTEGER NOT NULL,
+    break_start TEXT NOT NULL,
+    break_end TEXT NOT NULL,
+    break_duration INTEGER NOT NULL,
+    FOREIGN KEY (shift_id) REFERENCES shifts(id)
+);
+```
+
 #### settings（設定）
+
 ```sql
 CREATE TABLE settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
--- 例: max_consecutive_days, target_average_score
 ```
 
 ## 5. 最適化アルゴリズム（シンプル版）
@@ -260,50 +251,55 @@ minimize: Σ |time_slot_score[i] - target_average|
 ### 5.2 ソルバー
 
 **PuLP + CBC Solver**
-- 理由: インストール簡単、小規模データに十分、軽量
-- 5名程度なら数秒で解決可能
+
+- インストール簡単、小規模データに十分、軽量
+- 5〜10名程度なら数秒で解決可能
 
 ### 5.3 アルゴリズムフロー
 
-```
-1. データ取得（職員、時間帯、可能情報）
-2. 制約条件の設定
-3. 目的関数の設定
-4. ソルバー実行（最大60秒）
-5. 結果の取得とDB保存
+```text
+1. データ取得（職員、時間帯、休暇情報）
+2. 勤務可否判定（勤務形態と休暇を考慮）
+3. 制約条件の設定（ハード制約）
+4. 目的関数の設定（最適化モード別）
+5. ソルバー実行（最大60秒）
+6. 結果の取得とDB保存
+7. 休憩時間の自動割り当て
 ```
 
-## 6. 機能設計（最小限）
+## 6. 機能設計
 
-### 6.1 画面構成
+### 6.1 画面構成（V3.0）
 
 **Streamlitのマルチページアプリ**
 
-```
+```text
 🏠 ホーム（ダッシュボード）
+├─ 📊 診療時間一覧（固定）
 ├─ 📊 今月のシフト概要
 └─ 📈 スキル分布グラフ
 
 👥 職員管理
 ├─ 職員一覧
 ├─ 職員追加・編集
-└─ スキルスコア設定
+├─ 職員タイプ設定
+├─ 勤務形態選択
+└─ 4項目スキルスコア設定
 
-⏰ 時間帯設定
-├─ 時間帯一覧
-└─ 時間帯追加・編集
-
-📅 勤務可能情報
-├─ カレンダー入力
-└─ 一括設定
+🏖️ 休暇管理
+├─ カレンダー表示
+├─ 休暇登録（終日/午前/午後）
+└─ 休暇一覧・削除
 
 🎯 シフト生成
 ├─ 生成パラメータ設定
+├─ 最適化モード選択
 ├─ 自動生成実行
 └─ 結果プレビュー
 
 📋 シフト表示・編集
 ├─ 月別カレンダー表示
+├─ 休憩時間表示
 ├─ 手動編集
 └─ Excel出力
 ```

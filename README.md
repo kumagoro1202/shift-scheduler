@@ -1,57 +1,39 @@
 # シフト管理システム V3.0
 
-小規模施設（5名程度）向けの高度な自動シフト最適化システムです。
+小規模施設（5〜10名程度）向けの高度な自動シフト最適化システムです。
 
-## 🆕 V3.0 新機能
+## 🌟 主な機能
 
-- 🏖️ **休暇管理の簡素化**: 時間帯ごとの勤務可否登録から、日付単位の休暇登録に変更
-- 📅 **診療時間の固定化**: 時間帯マスタを固定化し、運用を簡素化
-- 💼 **勤務形態マスタ**: より柔軟な勤務形態管理（早番・中番・遅番など）
-- ✅ **デフォルト勤務可能**: 休暇未登録の日は自動的に勤務可能と判定
-- 🔄 **V2.0互換**: V2.0データを自動変換してマイグレーション
-
-## V2.0からの主な変更点
-
-| 項目 | V2.0 | V3.0 |
-|-----|------|------|
-| 勤務可否登録 | 時間帯ごとに勤務可否を登録 | 休暇を取る日のみ登録 |
-| 時間帯設定 | ユーザーが編集可能 | 固定（診療スケジュールに準拠） |
-| 勤務形態 | work_pattern (P1, P2...) | employment_pattern_id (full_early, short_time...) |
-| UI | 勤務可能情報ページ | 休暇管理ページ |
+- 🏖️ **休暇管理の簡素化**: 日付単位で休暇を登録（終日/午前/午後）
+- 📅 **診療時間の固定化**: システム定義の診療時間で運用が簡単
+- 💼 **勤務形態マスタ**: 早番・中番・遅番など柔軟な勤務形態管理
+- ✅ **自動判定**: 休暇未登録の日は勤務形態に応じて自動的に勤務可能
+- 🎯 **高度な最適化**: 4項目スキルスコアと職員タイプを考慮
+- ☕ **休憩時間管理**: 自動休憩割り当てと窓口カバレッジ検証
 
 ## 特徴
 
-- 🎯 **高度な最適化**: 4項目スキルスコアと職員タイプを考慮した最適シフト自動生成
 - 💻 **ローカル実行**: サーバー不要、PC上で完結
-- 📊 **詳細な視覚化**: グラフや統計でシフトバランスを多角的に分析
+- 📊 **詳細な視覚化**: グラフや統計でシフトバランスを分析
 - 📥 **Excel出力**: 印刷・配布用にExcel形式で出力可能
 - ⚡ **簡単操作**: ブラウザベースの直感的なUI
-- 🔄 **完全互換**: V2.0データを自動マイグレーション
 
 ## クイックスタート
 
-### 方法1: 新規セットアップ
+### 初回セットアップ
 
 ```powershell
 # 依存パッケージのインストール
 pip install -r requirements.txt
 
-# サンプルデータの投入
-python scripts/init_v3_sample_data.py
+# サンプルデータの投入（任意）
+python scripts/init_sample_data.py
 
 # アプリケーションの起動
 streamlit run main.py
 ```
 
-### 方法2: V2.0からのマイグレーション
-
-```powershell
-# V2.0データのマイグレーション
-python scripts/migrate_to_v3.py
-
-# アプリケーションの起動
-streamlit run main.py
-```
+ブラウザが自動的に開き、`http://localhost:8501` でアプリケーションにアクセスできます。
 
 ## 機能一覧
 
@@ -115,53 +97,22 @@ streamlit run main.py
 
 ## システム要件
 
+- **総合対応力**: 全般的な対応能力（0-100）
+
+## システム要件
+
 - **OS**: Windows 10/11
-- **メモリ**: 2GB以上推奨
-- **ディスク**: 100MB以上の空き容量
+- **メモリ**: 4GB以上推奨
+- **ディスク**: 500MB以上の空き容量
 - **ブラウザ**: Chrome, Edge, Firefox など
 
 ## 技術スタック
 
 - **言語**: Python 3.11+
-- **フレームワーク**: Streamlit 1.28.0
+- **フレームワーク**: Streamlit 1.28+
 - **データベース**: SQLite 3.x
-- **最適化エンジン**: PuLP 2.7.0
+- **最適化エンジン**: PuLP 2.7+
 - **可視化**: Plotly, Pandas
-
-## 開発環境セットアップ
-
-Pythonから実行する場合の手順:
-
-### 1. リポジトリのクローン
-
-```bash
-git clone <repository-url>
-cd shift-scheduler
-```
-
-### 2. 依存パッケージのインストール
-
-```powershell
-pip install -r requirements.txt
-```
-
-### 3. アプリケーションの起動
-
-```powershell
-streamlit run main.py
-```
-
-ブラウザで <http://localhost:8501> が自動的に開きます。
-
-### 4. テスト実行（オプション）
-
-```powershell
-# シフト生成ロジックのテスト
-python tests/test_new_logic.py
-
-# サンプルデータの投入
-python scripts/init_sample_data.py
-```
 
 ## プロジェクト構成
 
@@ -171,55 +122,40 @@ shift-scheduler/
 ├── requirements.txt        # Python依存関係
 ├── README.md               # このファイル
 ├── src/                    # ソースコード
-│   ├── database.py         # データベース操作（V2拡張対応）
-│   ├── optimizer_v2.py     # V2.0最適化エンジン
-│   ├── optimizer.py        # V2ラッパー（後方互換）
-│   ├── migration.py        # V1→V2マイグレーション
+│   ├── database.py         # データベース操作（V3.0完全版）
+│   ├── optimizer.py        # シフト最適化エンジン
+│   ├── availability_checker.py  # 勤務可否判定
 │   ├── break_scheduler.py  # 休憩時間自動割り当て
 │   └── utils.py            # ユーティリティ関数
 ├── pages/                  # Streamlitページ
-│   ├── 1_👥_職員管理.py    # V2.0対応（4項目スキル）
-│   ├── 2_⏰_時間帯設定.py   # V2.0対応（業務エリア、目標スキル）
-│   ├── 3_📅_勤務可能情報.py
-│   ├── 4_🎯_シフト生成.py   # V2.0対応（最適化モード選択）
-│   └── 5_📋_シフト表示.py   # V2.0対応（休憩時間表示）
+│   ├── 1_👥_職員管理.py    # 職員管理（勤務形態選択）
+│   ├── 2_🏖️_休暇管理.py    # 休暇管理（日付単位休暇登録）
+│   ├── 3_🎯_シフト生成.py   # シフト生成（最適化モード選択）
+│   └── 4_📋_シフト表示.py   # シフト表示（休憩時間表示）
 ├── docs/                   # ドキュメント
-│   ├── USER_GUIDE.md       # 利用ガイド（V2.0更新）
-│   ├── ARCHITECTURE.md     # 設計書
-│   ├── SYSTEM_REQUIREMENTS_V2.md  # V2.0要件定義
-│   ├── MIGRATION_PLAN_V2.md       # V2.0改修計画
-│   ├── IMPLEMENTATION_COMPLETE_V2.md  # V2.0実装完了レポート
-│   └── MIGRATION_GUIDE_V1_TO_V2.md    # マイグレーションガイド
+│   ├── REQUIREMENTS.md     # 要求事項定義書（V3.0統合版）
+│   ├── ARCHITECTURE.md     # システム設計書（V3.0対応）
+│   └── USER_GUIDE.md       # 利用ガイド（V3.0対応）
 ├── scripts/                # ユーティリティスクリプト
-│   ├── run.bat             # 起動用バッチファイル
-│   ├── launcher.py         # GUIランチャー
+│   ├── run.bat             # 起動用バッチファイル（Windows）
+│   ├── reset_db.bat        # データベースリセット（Windows）
 │   ├── init_sample_data.py # サンプルデータ投入
-│   ├── update_time_slots.py # 時間帯更新
+│   ├── launcher.py         # PyInstaller用ランチャー
 │   └── build.spec          # PyInstallerビルド設定
 ├── tests/                  # テストファイル
-│   ├── test_v2_features.py # V2.0機能テスト
-│   ├── test_new_logic.py   # シフト生成ロジックテスト
-│   ├── test_overlap.py     # 時間重複チェックテスト
-│   └── check_capacity.py   # 人数チェック
+│   ├── test_availability_v3.py  # 勤務可否テスト
+│   ├── test_break_scheduler.py  # 休憩スケジューラーテスト
+│   └── test_generate.py    # シフト生成テスト
 ├── data/                   # データベース（自動生成）
-│   └── shift.db            # SQLiteデータベース（V2.0スキーマ）
-├── build/                  # ビルド成果物
-└── dist/                   # 配布用実行ファイル
+│   └── shift.db            # SQLiteデータベース
+└── build/                  # ビルド成果物
 ```
 
 ## ドキュメント
 
-### V2.0関連
-
-- **[V2.0システム要件](docs/SYSTEM_REQUIREMENTS_V2.md)**: V2.0の詳細仕様
-- **[V2.0実装完了レポート](docs/IMPLEMENTATION_COMPLETE_V2.md)**: 実装内容のサマリ
-- **[マイグレーションガイド](docs/MIGRATION_GUIDE_V1_TO_V2.md)**: V1.0からV2.0への移行手順
-
-### 基本ドキュメント
-
-- **[利用ガイド](docs/USER_GUIDE.md)**: 詳細な操作方法とトラブルシューティング
-- **[設計書](docs/ARCHITECTURE.md)**: システムアーキテクチャと設計思想
-- **[実装計画](docs/IMPLEMENTATION_PLAN.md)**: 開発計画と進捗管理
+- **[要求事項定義書](docs/REQUIREMENTS.md)**: システムの詳細仕様（V3.0最新版）
+- **[システム設計書](docs/ARCHITECTURE.md)**: アーキテクチャと設計思想（V3.0対応）
+- **[利用ガイド](docs/USER_GUIDE.md)**: 詳細な操作方法（V3.0対応）
 
 ## 実行可能ファイルのビルド
 
@@ -253,5 +189,5 @@ Copy-Item data/shift.db "shift_backup_$(Get-Date -Format 'yyyyMMdd').db"
 
 ---
 
-**Version**: 1.0.0  
-**リリース日**: 2025年11月26日
+**Version**: 3.0.0  
+**最終更新日**: 2025年11月28日

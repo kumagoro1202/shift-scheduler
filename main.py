@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
 # Streamlitアプリケーションコード
 import streamlit as st
-from database import init_database
+from database import init_database, add_v2_columns_to_employees
 
 # ページ設定
 st.set_page_config(
@@ -57,8 +57,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# データベース初期化
+# データベース初期化とマイグレーション
 init_database()
+try:
+    add_v2_columns_to_employees()
+except Exception as e:
+    # マイグレーションエラーは無視（既に実行済みの場合など）
+    pass
 
 # メインページ
 st.title("📅 シフト作成システム")
@@ -70,19 +75,19 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown("### 👥 職員管理")
     st.info("職員の登録・編集とスキルスコアの設定を行います。")
-    if st.button("職員管理へ", key="btn_employees", use_container_width=True):
+    if st.button("職員管理へ", key="btn_employees", width="stretch"):
         st.switch_page("pages/1_👥_職員管理.py")
 
 with col2:
     st.markdown("### 🏖️ 休暇管理")
     st.info("職員の休暇を日付単位で登録します。")
-    if st.button("休暇管理へ", key="btn_vacation", use_container_width=True):
+    if st.button("休暇管理へ", key="btn_vacation", width="stretch"):
         st.switch_page("pages/2__休暇管理.py")
 
 with col3:
     st.markdown("### 🎯 シフト生成")
     st.success("最適化エンジンでシフトを自動生成します。")
-    if st.button("シフト生成へ", key="btn_generate", use_container_width=True):
+    if st.button("シフト生成へ", key="btn_generate", width="stretch"):
         st.switch_page("pages/3__シフト生成.py")
 
 st.markdown("---")
@@ -90,7 +95,7 @@ st.markdown("---")
 # シフト表示
 st.markdown("### 📋 シフト表示")
 st.info("生成されたシフトを確認・編集します。")
-if st.button("シフト表示へ", key="btn_display", use_container_width=True):
+if st.button("シフト表示へ", key="btn_display", width="stretch"):
     st.switch_page("pages/4__シフト表示.py")
 
 st.markdown("---")

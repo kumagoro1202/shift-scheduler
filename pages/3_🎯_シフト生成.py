@@ -16,7 +16,7 @@ from database import (
     create_shift,
     delete_shifts_by_date_range
 )
-from optimizer_v2 import generate_shift_v2, calculate_skill_balance_v2
+from optimizer import generate_shift_v2, calculate_skill_balance_v2
 from utils import get_month_range
 
 st.set_page_config(page_title="シフト生成", page_icon="🎯", layout="wide")
@@ -43,8 +43,9 @@ if not time_slots:
     st.stop()
 
 # 必要人数のチェック
-total_required = sum(ts['required_employees'] for ts in time_slots)
-if len(employees) < max(ts['required_employees'] for ts in time_slots):
+# required_staff (新スキーマ) または required_employees (旧スキーマ) に対応
+total_required = sum(ts.get('required_staff', ts.get('required_employees', 2)) for ts in time_slots)
+if len(employees) < max(ts.get('required_staff', ts.get('required_employees', 2)) for ts in time_slots):
     st.warning(f"⚠️ 職員数({len(employees)}名)が時間帯の最大必要人数より少ない可能性があります")
 
 st.subheader("📊 現在の状況")
@@ -155,7 +156,7 @@ st.markdown("---")
 col_btn1, col_btn2 = st.columns([3, 1])
 
 with col_btn1:
-    if st.button("🚀 シフトを生成", type="primary", use_container_width=True):
+    if st.button("🚀 シフトを生成", type="primary", width="stretch"):
         with st.spinner("🔄 シフトを生成中..."):
             # 既存シフトの削除
             if overwrite:
@@ -250,7 +251,7 @@ with col_btn1:
                 st.info("📋 「シフト表示」ページで生成されたシフトを確認できます")
 
 with col_btn2:
-    if st.button("🔄 リセット", use_container_width=True):
+    if st.button("🔄 リセット", width="stretch"):
         st.rerun()
 
 # サイドバーにヘルプ

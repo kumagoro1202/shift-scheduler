@@ -1,5 +1,5 @@
 """
-V2.0 休憩ローテーション機能テスト
+休憩ローテーション機能テスト
 """
 import sys
 from pathlib import Path
@@ -109,7 +109,7 @@ def run_all_tests():
     """全テストを実行"""
     print("\n")
     print("╔" + "=" * 48 + "╗")
-    print("║  V2.0 休憩ローテーション機能テスト           ║")
+    print("║  休憩ローテーション機能テスト                ║")
     print("╚" + "=" * 48 + "╝")
     print()
     

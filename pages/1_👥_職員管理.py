@@ -69,13 +69,13 @@ with tab1:
                     st.markdown("**スキルスコア**:")
                     skill_cols = st.columns(4)
                     with skill_cols[0]:
-                        st.metric("リハ室", emp.get('skill_reha_room', 0))
+                        st.metric("リハ室", emp.get('skill_reha', 0))
                     with skill_cols[1]:
                         st.metric("受付(午前)", emp.get('skill_reception_am', 0))
                     with skill_cols[2]:
                         st.metric("受付(午後)", emp.get('skill_reception_pm', 0))
                     with skill_cols[3]:
-                        st.metric("総合対応力", emp.get('skill_flexibility', 0))
+                        st.metric("総合対応力", emp.get('skill_general', 0))
                 
                 with col2:
                     # 編集・削除ボタン
@@ -108,7 +108,7 @@ with tab1:
             st.metric("パート", f"{part_time}名")
         
         with col_stat4:
-            avg_reha = sum(e.get('skill_reha_room', 0) for e in employees) / len(employees)
+            avg_reha = sum(e.get('skill_reha', 0) for e in employees) / len(employees)
             st.metric("平均リハ室スキル", f"{avg_reha:.1f}")
 
 # タブ2: 新規登録/編集
@@ -223,7 +223,7 @@ with tab2:
             skill_reha = st.number_input(
                 "リハ室スキル",
                 0, 100,
-                value=employee.get('skill_reha_room', 0) if employee else 0,
+                value=employee.get('skill_reha', 0) if employee else 0,
                 disabled=(employee_type == "TYPE_B"),
                 help="TYPE_Bは受付専門のため入力不可"
             )
@@ -251,7 +251,7 @@ with tab2:
             skill_flex = st.number_input(
                 "総合対応力",
                 0, 100,
-                value=employee.get('skill_flexibility', 0) if employee else 0,
+                value=employee.get('skill_general', 0) if employee else 0,
                 help="柔軟性や総合的な対応力を評価"
             )
         
@@ -263,65 +263,49 @@ with tab2:
             submit_button = st.form_submit_button(
                 "✅ 更新" if edit_mode else "✅ 登録",
                 type="primary",
-                use_container_width=True
+                width="stretch"
             )
         
         with col_btn2:
             if edit_mode:
                 cancel_button = st.form_submit_button(
                     "❌ キャンセル",
-                    use_container_width=True
+                    width="stretch"
                 )
     
     # フォーム送信処理
     if submit_button:
         if not name.strip():
             st.error("❌ 職員名を入力してください")
+        # 職員情報を登録/更新
+        update_params = {
+            'name': name.strip(),
+            'employee_type': employee_type,
+            'employment_type': employment_type,
+            'employment_pattern_id': employment_pattern_id,
+            'skill_reha': skill_reha,
+            'skill_reception_am': skill_am,
+            'skill_reception_pm': skill_pm,
+            'skill_general': skill_flex
+        }
+        
+        if edit_mode:
+            # 更新
+            if update_employee(st.session_state['edit_employee_id'], **update_params):
+                st.success(f"✅ {name}さんの情報を更新しました")
+                del st.session_state['edit_employee_id']
+                st.rerun()
+            else:
+                st.error("更新に失敗しました")
         else:
-            # V3.0対応: employment_pattern_idを設定
-            if all_emp_patterns:
-                update_params = {
-                    'name': name.strip(),
-                    'employee_type': employee_type,
-                    'employment_type': employment_type,
-                    'work_type': work_type,
-                    'employment_pattern_id': employment_pattern_id,
-                    'skill_reha_room': skill_reha,
-                    'skill_reception_am': skill_am,
-                    'skill_reception_pm': skill_pm,
-                    'skill_flexibility': skill_flex
-                }
+            # 新規登録
+            employee_id = create_employee(**update_params)
+            if employee_id:
+                st.success(f"✅ {name}さんを登録しました（ID: {employee_id}）")
+                st.balloons()
+                st.rerun()
             else:
-                # V2.0互換
-                update_params = {
-                    'name': name.strip(),
-                    'employee_type': employee_type,
-                    'employment_type': employment_type,
-                    'work_type': work_type,
-                    'work_pattern': work_pattern,
-                    'skill_reha_room': skill_reha,
-                    'skill_reception_am': skill_am,
-                    'skill_reception_pm': skill_pm,
-                    'skill_flexibility': skill_flex
-                }
-            
-            if edit_mode:
-                # 更新
-                if update_employee(st.session_state['edit_employee_id'], **update_params):
-                    st.success(f"✅ {name}さんの情報を更新しました")
-                    del st.session_state['edit_employee_id']
-                    st.rerun()
-                else:
-                    st.error("更新に失敗しました")
-            else:
-                # 新規登録
-                employee_id = create_employee(**update_params)
-                if employee_id:
-                    st.success(f"✅ {name}さんを登録しました（ID: {employee_id}）")
-                    st.balloons()
-                    st.rerun()
-                else:
-                    st.error("登録に失敗しました")
+                st.error("登録に失敗しました")
     
     if edit_mode and 'cancel_button' in locals() and cancel_button:
         del st.session_state['edit_employee_id']

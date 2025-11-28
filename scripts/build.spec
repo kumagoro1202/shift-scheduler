@@ -25,6 +25,11 @@ datas += copy_metadata('altair')
 datas += copy_metadata('pillow')
 datas += copy_metadata('pydeck')
 datas += copy_metadata('plotly')
+# pyarrowはオプショナルなので、存在する場合のみメタデータを収集
+try:
+    datas += copy_metadata('pyarrow')
+except Exception:
+    pass
 datas += collect_data_files('streamlit', include_py_files=True)
 datas += collect_data_files('streamlit.web')
 datas += collect_data_files('streamlit.runtime')
@@ -54,10 +59,13 @@ a = Analysis(
         'pandas',
         'openpyxl',
         'plotly',
-        'dateutil',
+        'pyarrow',
+        'pyarrow.lib',
         'src.database',
         'src.optimizer',
         'src.utils',
+        'src.availability_checker',
+        'src.break_scheduler',
         'altair',
         'pydeck',
         'PIL',

@@ -235,7 +235,7 @@ with tab3:
             title='職員別勤務日数',
             labels={'employee_name': '職員名', '勤務日数': '日数'}
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     
     with col_chart2:
         # 表で表示
@@ -275,7 +275,7 @@ with tab3:
             title='日別・時間帯別スキル合計',
             markers=True
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width="stretch")
     
     with col_ts2:
         # 時間帯別平均
@@ -320,7 +320,7 @@ with tab4:
     col_export1, col_export2 = st.columns(2)
     
     with col_export1:
-        if st.button("📊 Excelファイルとしてエクスポート", use_container_width=True):
+        if st.button("📊 Excelファイルとしてエクスポート", width="stretch"):
             export_path = Path(__file__).parent.parent / "exports"
             export_path.mkdir(exist_ok=True)
             

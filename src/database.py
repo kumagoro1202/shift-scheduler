@@ -1,5 +1,5 @@
 """
-シフト作成システム - データベース管理
+シフト作成システム - データベース管理（V3.0）
 """
 import sqlite3
 import sys
@@ -46,25 +46,35 @@ def init_database():
     conn = get_connection()
     cursor = conn.cursor()
     
-    # 職員テーブル
+    # 職員テーブル（V3.0仕様）
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS employees (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            skill_score INTEGER NOT NULL CHECK(skill_score >= 1 AND skill_score <= 100),
+            employee_type TEXT DEFAULT 'TYPE_A',
+            employment_type TEXT DEFAULT '正職員',
+            employment_pattern_id TEXT REFERENCES employment_patterns(id),
+            skill_reha INTEGER DEFAULT 50 CHECK(skill_reha >= 0 AND skill_reha <= 100),
+            skill_reception_am INTEGER DEFAULT 50 CHECK(skill_reception_am >= 0 AND skill_reception_am <= 100),
+            skill_reception_pm INTEGER DEFAULT 50 CHECK(skill_reception_pm >= 0 AND skill_reception_pm <= 100),
+            skill_general INTEGER DEFAULT 50 CHECK(skill_general >= 0 AND skill_general <= 100),
             is_active BOOLEAN DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
-    # 時間帯テーブル
+    # 時間帯テーブル（V3.0固定スロット）
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS time_slots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
+            id TEXT PRIMARY KEY,
+            day_of_week INTEGER NOT NULL CHECK(day_of_week >= 0 AND day_of_week <= 6),
+            period TEXT NOT NULL CHECK(period IN ('morning', 'afternoon')),
             start_time TEXT NOT NULL,
             end_time TEXT NOT NULL,
-            required_employees INTEGER DEFAULT 2,
+            is_active BOOLEAN DEFAULT 1,
+            required_staff INTEGER DEFAULT 2,
+            area TEXT DEFAULT '受付',
+            display_name TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -74,27 +84,12 @@ def init_database():
         CREATE TABLE IF NOT EXISTS shifts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date DATE NOT NULL,
-            time_slot_id INTEGER NOT NULL,
+            time_slot_id TEXT NOT NULL,
             employee_id INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (time_slot_id) REFERENCES time_slots(id),
             FOREIGN KEY (employee_id) REFERENCES employees(id),
             UNIQUE(date, time_slot_id, employee_id)
-        )
-    """)
-    
-    # 勤務可能情報テーブル
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS availability (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            employee_id INTEGER NOT NULL,
-            date DATE NOT NULL,
-            time_slot_id INTEGER NOT NULL,
-            is_available BOOLEAN DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (employee_id) REFERENCES employees(id),
-            FOREIGN KEY (time_slot_id) REFERENCES time_slots(id),
-            UNIQUE(employee_id, date, time_slot_id)
         )
     """)
     
@@ -108,6 +103,11 @@ def init_database():
     
     conn.commit()
     conn.close()
+    
+    # V3.0専用テーブルの初期化
+    init_employment_patterns_table()
+    init_employee_absences_table()
+    init_fixed_time_slots()
 
 
 def init_employment_patterns_table():
@@ -258,14 +258,6 @@ def add_employment_pattern_to_employees():
             ALTER TABLE employees 
             ADD COLUMN employment_pattern_id TEXT 
             REFERENCES employment_patterns(id)
-        """)
-        conn.commit()
-    except sqlite3.OperationalError as e:
-        # カラムが既に存在する場合はスキップ
-        if "duplicate column name" not in str(e).lower():
-            raise
-    finally:
-        conn.close()
 
 
 # ========== 職員管理 ==========
@@ -297,49 +289,26 @@ def get_employee_by_id(employee_id: int) -> Optional[Dict[str, Any]]:
 
 
 def create_employee(
-    name: str, 
-    skill_score: int = None,
+    name: str,
     employee_type: str = 'TYPE_A',
     employment_type: str = '正職員',
-    work_type: str = 'フルタイム',
-    work_pattern: str = 'P1',
-    employment_pattern_id: str = None,
-    skill_reha_room: int = 0,
-    skill_reception_am: int = 0,
-    skill_reception_pm: int = 0,
-    skill_flexibility: int = 0
+    employment_pattern_id: str = 'full_early',
+    skill_reha: int = 50,
+    skill_reception_am: int = 50,
+    skill_reception_pm: int = 50,
+    skill_general: int = 50
 ) -> int:
-    """職員を新規登録（V2対応・V3対応）"""
+    """職員を新規登録"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # V1互換性のため、skill_scoreが指定されている場合は4項目に反映
-    if skill_score is not None:
-        skill_reha_room = skill_score if skill_reha_room == 0 else skill_reha_room
-        skill_reception_am = skill_score if skill_reception_am == 0 else skill_reception_am
-        skill_reception_pm = skill_score if skill_reception_pm == 0 else skill_reception_pm
-        skill_flexibility = skill_score if skill_flexibility == 0 else skill_flexibility
-    else:
-        skill_score = max(skill_reha_room, skill_reception_am, skill_reception_pm, skill_flexibility)
-    
-    # employment_pattern_idカラムが存在するかチェック
-    try:
-        cursor.execute("""
-            INSERT INTO employees (
-                name, skill_score, employee_type, employment_type, work_type, work_pattern,
-                employment_pattern_id, skill_reha_room, skill_reception_am, skill_reception_pm, skill_flexibility
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name, skill_score, employee_type, employment_type, work_type, work_pattern,
-              employment_pattern_id, skill_reha_room, skill_reception_am, skill_reception_pm, skill_flexibility))
-    except sqlite3.OperationalError:
-        # employment_pattern_idカラムが存在しない場合（V2以前）
-        cursor.execute("""
-            INSERT INTO employees (
-                name, skill_score, employee_type, employment_type, work_type, work_pattern,
-                skill_reha_room, skill_reception_am, skill_reception_pm, skill_flexibility
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name, skill_score, employee_type, employment_type, work_type, work_pattern,
-              skill_reha_room, skill_reception_am, skill_reception_pm, skill_flexibility))
+    cursor.execute("""
+        INSERT INTO employees (
+            name, employee_type, employment_type, employment_pattern_id,
+            skill_reha, skill_reception_am, skill_reception_pm, skill_general
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, employee_type, employment_type, employment_pattern_id,
+          skill_reha, skill_reception_am, skill_reception_pm, skill_general))
     
     employee_id = cursor.lastrowid
     conn.commit()
@@ -348,20 +317,17 @@ def create_employee(
 
 
 def update_employee(
-    employee_id: int, 
-    name: str = None, 
-    skill_score: int = None,
+    employee_id: int,
+    name: str = None,
     employee_type: str = None,
     employment_type: str = None,
-    work_type: str = None,
-    work_pattern: str = None,
     employment_pattern_id: str = None,
-    skill_reha_room: int = None,
+    skill_reha: int = None,
     skill_reception_am: int = None,
     skill_reception_pm: int = None,
-    skill_flexibility: int = None
+    skill_general: int = None
 ) -> bool:
-    """職員情報を更新（V2対応・V3対応）"""
+    """職員情報を更新"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -372,30 +338,27 @@ def update_employee(
     if name is not None:
         updates.append("name = ?")
         params.append(name)
-    if skill_score is not None:
-        updates.append("skill_score = ?")
-        params.append(skill_score)
     if employee_type is not None:
         updates.append("employee_type = ?")
         params.append(employee_type)
     if employment_type is not None:
         updates.append("employment_type = ?")
         params.append(employment_type)
-    if work_type is not None:
-        updates.append("work_type = ?")
-        params.append(work_type)
-    if work_pattern is not None:
-        updates.append("work_pattern = ?")
-        params.append(work_pattern)
     if employment_pattern_id is not None:
         updates.append("employment_pattern_id = ?")
         params.append(employment_pattern_id)
-    if skill_reha_room is not None:
-        updates.append("skill_reha_room = ?")
-        params.append(skill_reha_room)
+    if skill_reha is not None:
+        updates.append("skill_reha = ?")
+        params.append(skill_reha)
     if skill_reception_am is not None:
         updates.append("skill_reception_am = ?")
         params.append(skill_reception_am)
+    if skill_reception_pm is not None:
+        updates.append("skill_reception_pm = ?")
+        params.append(skill_reception_pm)
+    if skill_general is not None:
+        updates.append("skill_general = ?")
+        params.append(skill_general)
     if skill_reception_pm is not None:
         updates.append("skill_reception_pm = ?")
         params.append(skill_reception_pm)
@@ -484,7 +447,7 @@ def get_work_pattern_by_id(pattern_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-# ========== 勤務形態マスタ管理（V3.0） ==========
+# ========== 勤務形態マスタ管理 ==========
 
 def get_all_employment_patterns() -> List[Dict[str, Any]]:
     """全勤務形態を取得"""
@@ -532,7 +495,7 @@ def get_employment_patterns_by_category(category: str) -> List[Dict[str, Any]]:
         return []
 
 
-# ========== 休暇管理（V3.0） ==========
+# ========== 休暇管理 ==========
 
 def add_absence(employee_id: int, absence_date: str, absence_type: str, reason: str = None) -> int:
     """休暇を登録"""
@@ -694,7 +657,7 @@ def create_time_slot(
     target_skill_score: int = 150,
     skill_weight: float = 1.0
 ) -> int:
-    """時間帯を新規登録（V2対応）"""
+    """時間帯を新規登録"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -731,7 +694,7 @@ def update_time_slot(
     target_skill_score: int = None,
     skill_weight: float = None
 ) -> bool:
-    """時間帯情報を更新（V2対応）"""
+    """時間帯情報を更新"""
     conn = get_connection()
     cursor = conn.cursor()
     

@@ -1,31 +1,204 @@
 """
 シフト最適化エンジン
-V2.0エンジンへのラッパー（後方互換性維持）
+4項目スキルスコア、職員タイプ制約、休暇管理対応
+V3.0仕様: availability_checkerを使用した勤務可否判定
 """
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import pandas as pd
-import random
-
-# V2エンジンをインポート
-from .optimizer_v2 import (
-    check_time_overlap,
-    calculate_skill_score,
-    can_assign_to_area,
-    generate_shift_v2,
-    calculate_skill_balance_v2
-)
+from availability_checker import is_employee_available
 
 
-def generate_shift(
+def check_time_overlap(ts1: Dict[str, Any], ts2: Dict[str, Any]) -> bool:
+    """2つの時間帯が重なっているかチェック"""
+    def time_to_minutes(time_str: str) -> int:
+        h, m = map(int, time_str.split(':'))
+        return h * 60 + m
+    
+    start1 = time_to_minutes(ts1['start_time'])
+    end1 = time_to_minutes(ts1['end_time'])
+    start2 = time_to_minutes(ts2['start_time'])
+    end2 = time_to_minutes(ts2['end_time'])
+    
+    # 夜勤など日をまたぐ場合の処理
+    if end1 < start1:
+        end1 += 24 * 60
+    if end2 < start2:
+        end2 += 24 * 60
+    
+    return not (end1 <= start2 or end2 <= start1)
+
+
+def calculate_skill_score(employee: Dict[str, Any], time_slot: Dict[str, Any]) -> int:
+    """
+    時間帯に適したスキルスコアを計算
+    
+    Args:
+        employee: 職員情報
+        time_slot: 時間帯情報
+    
+    Returns:
+        適用されるスキルスコア
+    """
+    area_type = time_slot.get('area_type', '受付')
+    time_period = time_slot.get('time_period', '終日')
+    
+    if area_type == 'リハ室':
+        return employee.get('skill_reha', employee.get('skill_score', 0))
+    elif area_type == '受付':
+        if time_period == '午前':
+            return employee.get('skill_reception_am', employee.get('skill_score', 0))
+        elif time_period == '午後':
+            return employee.get('skill_reception_pm', employee.get('skill_score', 0))
+        else:  # 終日
+            # 午前と午後の平均
+            am_skill = employee.get('skill_reception_am', employee.get('skill_score', 0))
+            pm_skill = employee.get('skill_reception_pm', employee.get('skill_score', 0))
+            return (am_skill + pm_skill) // 2
+    
+    # フォールバック: 総合対応力または旧skill_score
+    return employee.get('skill_general', employee.get('skill_score', 0))
+
+
+def can_assign_to_area(employee: Dict[str, Any], time_slot: Dict[str, Any]) -> bool:
+    """
+    職員が時間帯に配置可能かチェック
+    
+    Args:
+        employee: 職員情報
+        time_slot: 時間帯情報
+    
+    Returns:
+        配置可能ならTrue
+    """
+    area_type = time_slot.get('area_type', '受付')
+    emp_type = employee.get('employee_type', 'TYPE_A')
+    
+    if area_type == 'リハ室':
+        # リハ室にはTYPE_A, TYPE_C, TYPE_Dのみ
+        if emp_type not in ['TYPE_A', 'TYPE_C', 'TYPE_D']:
+            return False
+        # リハ室スキルが0以下は不可
+        if employee.get('skill_reha', 0) <= 0:
+            return False
+    
+    elif area_type == '受付':
+        # 受付にはTYPE_A, TYPE_Bのみ
+        if emp_type not in ['TYPE_A', 'TYPE_B']:
+            return False
+        # 受付スキル（午前または午後）が0以下は不可
+        am_skill = employee.get('skill_reception_am', 0)
+        pm_skill = employee.get('skill_reception_pm', 0)
+        if am_skill <= 0 and pm_skill <= 0:
+            return False
+    
+    return True
+
+
+def calculate_objective_value(
+    shifts_for_slot: List[Dict[str, Any]],
+    time_slot: Dict[str, Any],
+    employees_data: List[Dict[str, Any]]
+) -> float:
+    """
+    時間帯のシフトの目的関数値を計算（小さいほど良い）
+    
+    Args:
+        shifts_for_slot: この時間帯のシフトリスト
+        time_slot: 時間帯情報
+        employees_data: 職員データ（シフトに紐づいている）
+    
+    Returns:
+        目的関数値（目標値との差分 × 重み）
+    """
+    # 実際のスキルスコア合計を計算
+    actual_score = sum(
+        calculate_skill_score(emp, time_slot)
+        for emp in employees_data
+    )
+    
+    # 目標値
+    target_score = time_slot.get('target_skill_score', 150)
+    weight = time_slot.get('skill_weight', 1.0)
+    
+    # 差分の絶対値 × 重み
+    deviation = weight * abs(actual_score - target_score)
+    
+    return deviation
+
+
+def apply_part_time_rule(
+    date: str,
+    time_slots: List[Dict[str, Any]],
+    shifts_for_date: List[Dict[str, Any]]
+) -> bool:
+    """
+    パート職員（TYPE_D）出勤時の特殊ルールをチェック
+    
+    ルール:
+    - TYPE_Dがリハ室に配置される日は、
+    - リハ室: TYPE_C or TYPE_A (1名) + TYPE_D (1名)
+    - 受付: TYPE_A (1名) または TYPE_B (1名)
+    
+    Args:
+        date: 日付
+        time_slots: 時間帯リスト
+        shifts_for_date: この日のシフトリスト
+    
+    Returns:
+        ルールを満たしていればTrue
+    """
+    # TYPE_Dの出勤チェック
+    type_d_shifts = [
+        s for s in shifts_for_date
+        if s['employee'].get('employee_type') == 'TYPE_D'
+    ]
+    
+    if not type_d_shifts:
+        return True  # TYPE_Dがいない場合は問題なし
+    
+    # リハ室のTYPE_Dシフトを取得
+    reha_type_d = [
+        s for s in type_d_shifts
+        if s['time_slot'].get('area_type') == 'リハ室'
+    ]
+    
+    if not reha_type_d:
+        return True  # リハ室にTYPE_Dがいない場合は問題なし
+    
+    # リハ室シフトの構成をチェック
+    for ts in time_slots:
+        if ts.get('area_type') != 'リハ室':
+            continue
+        
+        slot_shifts = [
+            s for s in shifts_for_date
+            if s['time_slot_id'] == ts['id']
+        ]
+        
+        if not slot_shifts:
+            continue
+        
+        emp_types = [s['employee'].get('employee_type') for s in slot_shifts]
+        
+        # TYPE_Dがいる場合、TYPE_AまたはTYPE_Cも必要
+        if 'TYPE_D' in emp_types:
+            if 'TYPE_A' not in emp_types and 'TYPE_C' not in emp_types:
+                return False
+    
+    return True
+
+
+def generate_shift_v2(
     employees: List[Dict[str, Any]],
     time_slots: List[Dict[str, Any]],
     start_date: str,
     end_date: str,
-    availability_func=None
+    availability_func=None,
+    optimization_mode: str = 'balance'
 ) -> Optional[List[Dict[str, Any]]]:
     """
-    シフトを最適化して生成（V1互換ラッパー）
+    シフトを最適化して生成（V2.0 - グリーディアルゴリズム）
     
     Args:
         employees: 職員リスト
@@ -33,151 +206,148 @@ def generate_shift(
         start_date: 開始日 (YYYY-MM-DD)
         end_date: 終了日 (YYYY-MM-DD)
         availability_func: 勤務可能チェック関数
+        optimization_mode: 最適化モード ('balance', 'skill', 'days')
     
     Returns:
         生成されたシフトのリスト（失敗時はNone）
     """
-    # V2エンジンを使用（デフォルトはbalanceモード）
-    return generate_shift_v2(
-        employees,
-        time_slots,
-        start_date,
-        end_date,
-        availability_func,
-        optimization_mode='balance'
-    )
-
-
-def calculate_skill_balance(shifts: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    シフトのスキルバランスを計算（V1互換ラッパー）
-    
-    Returns:
-        統計情報（平均、標準偏差など）
-    """
-    # 時間帯情報が必要なので、簡易的な実装
-    if not shifts:
-        return {
-            'avg_skill': 0,
-            'std_skill': 0,
-            'min_skill': 0,
-            'max_skill': 0
-        }
-    
-    df = pd.DataFrame(shifts)
-    
-    # 日時・時間帯ごとのグループ化
-    grouped = df.groupby(['date', 'time_slot_id'])['skill_score'].sum()
-    
-    return {
-        'avg_skill': grouped.mean(),
-        'std_skill': grouped.std(),
-        'min_skill': grouped.min(),
-        'max_skill': grouped.max(),
-        'balance_score': grouped.std() / grouped.mean() if grouped.mean() > 0 else 0
-    }
-
-                required = ts['required_employees']
-                
-                if slot_type == 'morning' or slot_type == 'afternoon':
-                    # 午前・午後は、1日通しの人数に応じて必要人数を調整
-                    # 目標: 各時間帯に合計2名
-                    required = max(0, 2 - fullday_assigned)
-                elif slot_type == 'fullday':
-                    # 1日通しは最大2名
-                    required = min(ts['required_employees'], 2)
-                
-                # 必要人数が0の場合はスキップ
-                if required == 0:
-                    continue
+    try:
+        if not employees or not time_slots:
+            print("❌ エラー: 職員または時間帯が空です")
+            return None
+        
+        print(f"📊 最適化開始 (V2.0): 職員{len(employees)}名, 時間帯{len(time_slots)}個")
+        print(f"🎯 最適化モード: {optimization_mode}")
+        
+        # 日付リストを生成
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+        dates = []
+        current = start
+        while current <= end:
+            dates.append(current.strftime("%Y-%m-%d"))
+            current += timedelta(days=1)
+        
+        print(f"📅 期間: {start_date} 〜 {end_date} ({len(dates)}日間)")
+        
+        # 勤務回数を記録
+        work_count = {emp['id']: 0 for emp in employees}
+        shifts = []
+        
+        # 各日付について処理
+        for date in dates:
+            # 日ごとのシフトリスト（パートタイム特殊ルールチェック用）
+            shifts_for_date = []
+            
+            # V3: 日付の曜日を取得して、該当する時間帯のみをフィルタリング
+            date_obj = datetime.strptime(date, "%Y-%m-%d")
+            day_of_week = date_obj.weekday()  # 月曜=0, 日曜=6
+            
+            # この日付に該当する時間帯を抽出
+            # V3スキーマ（day_of_weekカラムあり）とV2互換（なし）を両対応
+            if time_slots and 'day_of_week' in time_slots[0]:
+                # V3モード: day_of_weekでフィルタリング
+                daily_time_slots = [ts for ts in time_slots if ts.get('day_of_week') == day_of_week and ts.get('is_active', True)]
+            else:
+                # V2互換モード: 全時間帯を使用
+                daily_time_slots = time_slots
+            
+            # 各時間帯について処理
+            for ts in daily_time_slots:
+                # 必要人数の範囲
+                req_min = ts.get('required_employees_min', 1)
+                req_max = ts.get('required_employees_max', ts.get('required_employees', 2))
                 
                 # この時間帯に勤務可能な職員リスト
                 available_employees = []
                 for emp in employees:
-                    # すでにこの日の時間が重なるシフトに勤務しているかチェック
+                    # 職員タイプとエリアの整合性チェック
+                    if not can_assign_to_area(emp, ts):
+                        continue
+                    
+                    # 時間が重なるシフトに勤務しているかチェック
                     conflicting_shift = any(
                         s['employee_id'] == emp['id'] and 
                         s['date'] == date and
-                        check_time_overlap(ts, {'start_time': s['start_time'], 'end_time': s['end_time']})
+                        check_time_overlap(ts, s['time_slot'])
                         for s in shifts
                     )
                     if conflicting_shift:
                         continue
                     
-                    # 勤務可能かチェック
-                    if availability_func and not availability_func(emp['id'], date, ts['id']):
-                        continue
+                    # V3.0: availability_checkerを使用した勤務可否チェック
+                    # availability_funcが指定されている場合は従来の方法（V2互換）
+                    # 指定されていない場合はavailability_checkerを使用（V3）
+                    if availability_func:
+                        # V2互換モード: 従来のavailability_func使用
+                        if not availability_func(emp['id'], date, ts['id']):
+                            continue
+                    else:
+                        # V3モード: availability_checkerを使用
+                        if not is_employee_available(emp, date, ts):
+                            continue
                     
                     available_employees.append(emp)
                 
-                # 必要人数に満たない場合はエラー
-                if len(available_employees) < required:
-                    print(f"❌ {date} {ts['name']}: 勤務可能{len(available_employees)}名 < 必要{required}名")
-                    
-                    # 診断情報を出力
-                    print(f"\n🔍 診断情報:")
-                    print(f"   職員総数: {len(employees)}名")
-                    print(f"   この時間帯と時間が重なる他のシフト:")
-                    for s in shifts:
-                        if s['date'] == date:
-                            s_ts = {'start_time': s['start_time'], 'end_time': s['end_time']}
-                            if check_time_overlap(ts, s_ts):
-                                print(f"     - {s['time_slot_name']} ({s['start_time']}-{s['end_time']}): {s['employee_name']}")
-                    
-                    print(f"\n💡 ヒント:")
-                    print(f"   1. 時間が重なる時間帯の必要人数の合計が職員数を超えています")
-                    print(f"   2. 解決方法:")
-                    print(f"      - 職員を追加する")
-                    print(f"      - 勤務可能情報で「勤務不可」の設定を見直す")
-                    
+                # 最小人数に満たない場合はエラー
+                if len(available_employees) < req_min:
+                    print(f"❌ {date} {ts.get('display_name', ts.get('name', ts['id']))}: 勤務可能{len(available_employees)}名 < 最小必要{req_min}名")
                     return None
                 
-                # 勤務回数が少ない順にソート（スキルスコアも考慮）
-                selected_employees = []
+                # 最適な人数を決定（req_min 〜 req_max の範囲）
+                # モードによって選択基準を変更
+                best_count = req_min
+                best_employees = []
+                best_score = float('inf')
                 
-                # 必要人数だけ選択
-                for _ in range(required):
-                    if not available_employees:
-                        break
+                for count in range(req_min, min(req_max + 1, len(available_employees) + 1)):
+                    # この人数で最適な組み合わせを探索
+                    candidates = select_employees_for_slot(
+                        available_employees,
+                        ts,
+                        count,
+                        work_count,
+                        optimization_mode
+                    )
                     
-                    # 勤務回数が最も少ない職員を選択
-                    # 同じ勤務回数の場合は、現在のシフトのスキルバランスを考慮
-                    min_work_count = min(work_count[emp['id']] for emp in available_employees)
-                    candidates = [emp for emp in available_employees if work_count[emp['id']] == min_work_count]
+                    if not candidates:
+                        continue
                     
-                    # 平均スキルに近い職員を選択
-                    avg_skill = sum(emp['skill_score'] for emp in employees) / len(employees)
-                    target_skill = avg_skill
+                    # 目的関数値を計算
+                    score = calculate_objective_value([], ts, candidates)
                     
-                    if selected_employees:
-                        # すでに選択された職員のスキル平均を考慮
-                        current_avg = sum(e['skill_score'] for e in selected_employees) / len(selected_employees)
-                        # 目標との差を埋める
-                        target_skill = avg_skill * (len(selected_employees) + 1) - current_avg * len(selected_employees)
-                    
-                    # 目標スキルに最も近い職員を選択
-                    selected = min(candidates, key=lambda e: abs(e['skill_score'] - target_skill))
-                    
-                    selected_employees.append(selected)
-                    available_employees.remove(selected)
-                    work_count[selected['id']] += 1
+                    if score < best_score:
+                        best_score = score
+                        best_count = count
+                        best_employees = candidates
                 
-                # シフトに追加
-                for emp in selected_employees:
-                    shifts.append({
+                # 選択された職員でシフトを追加
+                for emp in best_employees:
+                    shift = {
                         'date': date,
                         'time_slot_id': ts['id'],
                         'employee_id': emp['id'],
                         'employee_name': emp['name'],
-                        'skill_score': emp['skill_score'],
-                        'time_slot_name': ts['name'],
+                        'skill_score': calculate_skill_score(emp, ts),
+                        'time_slot_name': ts.get('display_name', ts.get('name', 'Unknown')),
                         'start_time': ts['start_time'],
-                        'end_time': ts['end_time']
-                    })
-                
-                # 1日通しを割り当てた場合は、その人数を記録
-                if slot_type == 'fullday':
-                    fullday_assigned += len(selected_employees)
+                        'end_time': ts['end_time'],
+                        'employee': emp,  # チェック用
+                        'time_slot': ts  # チェック用
+                    }
+                    shifts.append(shift)
+                    shifts_for_date.append(shift)
+                    work_count[emp['id']] += 1
+            
+            # パートタイム特殊ルールのチェック
+            if not apply_part_time_rule(date, time_slots, shifts_for_date):
+                print(f"⚠️ {date}: パートタイム特殊ルールに違反")
+                # ここでは警告のみ（必要に応じて調整）
+        
+        # employee, time_slotフィールドを削除（永続化用）
+        for s in shifts:
+            s.pop('employee', None)
+            s.pop('time_slot', None)
         
         print(f"✅ シフト生成成功: {len(shifts)}件")
         
@@ -194,12 +364,84 @@ def calculate_skill_balance(shifts: List[Dict[str, Any]]) -> Dict[str, Any]:
         return None
 
 
-def calculate_skill_balance(shifts: List[Dict[str, Any]]) -> Dict[str, Any]:
+def select_employees_for_slot(
+    available_employees: List[Dict[str, Any]],
+    time_slot: Dict[str, Any],
+    count: int,
+    work_count: Dict[int, int],
+    optimization_mode: str
+) -> List[Dict[str, Any]]:
     """
-    シフトのスキルバランスを計算
+    時間帯に配置する職員を選択
+    
+    Args:
+        available_employees: 候補職員リスト
+        time_slot: 時間帯情報
+        count: 選択する人数
+        work_count: 各職員の勤務回数
+        optimization_mode: 最適化モード
     
     Returns:
-        統計情報（平均、標準偏差など）
+        選択された職員リスト
+    """
+    if len(available_employees) < count:
+        return []
+    
+    selected = []
+    remaining = available_employees.copy()
+    
+    for _ in range(count):
+        if not remaining:
+            break
+        
+        # 最適化モードに応じて選択
+        if optimization_mode == 'days':
+            # 勤務回数重視: 最も少ない人を優先
+            min_work = min(work_count[emp['id']] for emp in remaining)
+            candidates = [emp for emp in remaining if work_count[emp['id']] == min_work]
+            selected_emp = candidates[0]
+        
+        elif optimization_mode == 'skill':
+            # スキル重視: 目標値に近づける
+            target_score = time_slot.get('target_skill_score', 150)
+            current_score = sum(calculate_skill_score(e, time_slot) for e in selected)
+            target_next = (target_score - current_score) / (count - len(selected))
+            
+            selected_emp = min(
+                remaining,
+                key=lambda e: abs(calculate_skill_score(e, time_slot) - target_next)
+            )
+        
+        else:  # 'balance'
+            # バランス重視: 勤務回数とスキルの両方を考慮
+            min_work = min(work_count[emp['id']] for emp in remaining)
+            candidates = [emp for emp in remaining if work_count[emp['id']] == min_work]
+            
+            target_score = time_slot.get('target_skill_score', 150)
+            current_score = sum(calculate_skill_score(e, time_slot) for e in selected)
+            target_next = (target_score - current_score) / (count - len(selected)) if count > len(selected) else 0
+            
+            selected_emp = min(
+                candidates,
+                key=lambda e: abs(calculate_skill_score(e, time_slot) - target_next)
+            )
+        
+        selected.append(selected_emp)
+        remaining.remove(selected_emp)
+    
+    return selected
+
+
+def calculate_skill_balance_v2(shifts: List[Dict[str, Any]], time_slots: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    シフトのスキルバランスを計算（V2.0）
+    
+    Args:
+        shifts: シフトリスト
+        time_slots: 時間帯リスト
+    
+    Returns:
+        統計情報
     """
     if not shifts:
         return {
@@ -209,15 +451,31 @@ def calculate_skill_balance(shifts: List[Dict[str, Any]]) -> Dict[str, Any]:
             'max_skill': 0
         }
     
-    df = pd.DataFrame(shifts)
+    # 時間帯ごとのスキルスコア合計を計算
+    slot_scores = {}
+    for ts in time_slots:
+        ts_shifts = [s for s in shifts if s['time_slot_id'] == ts['id']]
+        if ts_shifts:
+            total_score = sum(s['skill_score'] for s in ts_shifts)
+            slot_scores[ts['id']] = total_score
     
-    # 日時・時間帯ごとのグループ化
-    grouped = df.groupby(['date', 'time_slot_id'])['skill_score'].sum()
+    if not slot_scores:
+        return {
+            'avg_skill': 0,
+            'std_skill': 0,
+            'min_skill': 0,
+            'max_skill': 0
+        }
+    
+    scores = list(slot_scores.values())
+    avg = sum(scores) / len(scores)
+    variance = sum((x - avg) ** 2 for x in scores) / len(scores)
+    std = variance ** 0.5
     
     return {
-        'avg_skill': grouped.mean(),
-        'std_skill': grouped.std(),
-        'min_skill': grouped.min(),
-        'max_skill': grouped.max(),
-        'balance_score': grouped.std() / grouped.mean() if grouped.mean() > 0 else 0
+        'avg_skill': avg,
+        'std_skill': std,
+        'min_skill': min(scores),
+        'max_skill': max(scores),
+        'balance_score': std / avg if avg > 0 else 0
     }
