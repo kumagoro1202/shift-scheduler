@@ -156,38 +156,16 @@ def init_fixed_time_slots():
     conn = get_connection()
     cursor = conn.cursor()
     
-    # 既存のtime_slotsテーブルをバックアップ
-    try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS time_slots_backup AS 
-            SELECT * FROM time_slots WHERE 1=0
-        """)
-        cursor.execute("""
-            INSERT INTO time_slots_backup SELECT * FROM time_slots
-        """)
-    except sqlite3.OperationalError:
-        pass  # バックアップテーブルが既に存在する場合はスキップ
+    # 既存の時間帯データをチェック
+    cursor.execute("SELECT COUNT(*) FROM time_slots")
+    existing_count = cursor.fetchone()[0]
     
-    # time_slotsテーブルを再作成
-    cursor.execute("DROP TABLE IF EXISTS time_slots")
+    # 既にデータが存在する場合はスキップ（初回のみ作成）
+    if existing_count > 0:
+        conn.close()
+        return
     
-    cursor.execute("""
-        CREATE TABLE time_slots (
-            id TEXT PRIMARY KEY,
-            day_of_week INTEGER NOT NULL,
-            period TEXT NOT NULL,
-            start_time TEXT NOT NULL,
-            end_time TEXT NOT NULL,
-            is_active BOOLEAN DEFAULT 1,
-            required_staff INTEGER DEFAULT 2,
-            area TEXT DEFAULT '受付',
-            display_name TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            CHECK(day_of_week >= 0 AND day_of_week <= 6),
-            CHECK(period IN ('morning', 'afternoon'))
-        )
-    """)
-    
+    # time_slotsテーブルが空の場合のみデータ投入
     # 固定時間帯データ
     time_slots = [
         # === リハ室（終日：08:30-19:00、必要人数2名）===
@@ -264,6 +242,92 @@ def init_employee_absences_table():
         CREATE INDEX IF NOT EXISTS idx_absence_employee_date 
         ON employee_absences(employee_id, absence_date)
     """)
+    
+    conn.commit()
+    conn.close()
+
+
+def reset_time_slots():
+    """
+    時間帯マスタを強制的に再初期化（既存データを削除して再作成）
+    注意: 既存のシフトデータには影響しませんが、時間帯データは完全に上書きされます
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # 既存データをバックアップ（任意）
+    try:
+        cursor.execute("DROP TABLE IF EXISTS time_slots_backup")
+        cursor.execute("CREATE TABLE time_slots_backup AS SELECT * FROM time_slots")
+    except sqlite3.OperationalError:
+        pass
+    
+    # 時間帯テーブルを削除して再作成
+    cursor.execute("DROP TABLE IF EXISTS time_slots")
+    
+    cursor.execute("""
+        CREATE TABLE time_slots (
+            id TEXT PRIMARY KEY,
+            day_of_week INTEGER NOT NULL,
+            period TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            required_staff INTEGER DEFAULT 2,
+            area TEXT DEFAULT '受付',
+            display_name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CHECK(day_of_week >= 0 AND day_of_week <= 6),
+            CHECK(period IN ('morning', 'afternoon'))
+        )
+    """)
+    
+    # 固定時間帯データ（V3.0仕様）
+    time_slots = [
+        # === リハ室（終日：08:30-19:00、必要人数2名）===
+        # 月曜
+        ('mon_reha_am', 0, 'morning', '08:30', '13:00', 1, 2, 'リハ室', 'リハ室（月曜午前）'),
+        ('mon_reha_pm', 0, 'afternoon', '13:00', '19:00', 1, 2, 'リハ室', 'リハ室（月曜午後）'),
+        # 火曜
+        ('tue_reha_am', 1, 'morning', '08:30', '13:00', 1, 2, 'リハ室', 'リハ室（火曜午前）'),
+        ('tue_reha_pm', 1, 'afternoon', '13:00', '19:00', 1, 2, 'リハ室', 'リハ室（火曜午後）'),
+        # 水曜
+        ('wed_reha_am', 2, 'morning', '08:30', '13:00', 1, 2, 'リハ室', 'リハ室（水曜午前）'),
+        ('wed_reha_pm', 2, 'afternoon', '13:00', '19:00', 1, 2, 'リハ室', 'リハ室（水曜午後）'),
+        # 木曜
+        ('thu_reha_am', 3, 'morning', '08:30', '13:00', 1, 2, 'リハ室', 'リハ室（木曜午前）'),
+        ('thu_reha_pm', 3, 'afternoon', '13:00', '19:00', 1, 2, 'リハ室', 'リハ室（木曜午後）'),
+        # 金曜
+        ('fri_reha_am', 4, 'morning', '08:30', '13:00', 1, 2, 'リハ室', 'リハ室（金曜午前）'),
+        ('fri_reha_pm', 4, 'afternoon', '13:00', '19:00', 1, 2, 'リハ室', 'リハ室（金曜午後）'),
+        # 土曜
+        ('sat_reha_am', 5, 'morning', '08:30', '13:30', 1, 2, 'リハ室', 'リハ室（土曜午前）'),
+        ('sat_reha_pm', 5, 'afternoon', '13:30', '19:00', 1, 2, 'リハ室', 'リハ室（土曜午後）'),
+        
+        # === 受付（診療時間に合わせて）===
+        # 月曜
+        ('mon_recep_am', 0, 'morning', '08:30', '13:00', 1, 2, '受付', '受付（月曜午前）'),
+        ('mon_recep_pm', 0, 'afternoon', '13:00', '19:00', 1, 1, '受付', '受付（月曜午後）'),
+        # 火曜
+        ('tue_recep_am', 1, 'morning', '08:30', '13:00', 1, 2, '受付', '受付（火曜午前）'),
+        ('tue_recep_pm', 1, 'afternoon', '13:00', '19:00', 1, 1, '受付', '受付（火曜午後）'),
+        # 水曜
+        ('wed_recep_am', 2, 'morning', '08:30', '13:00', 1, 2, '受付', '受付（水曜午前）'),
+        ('wed_recep_pm', 2, 'afternoon', '13:00', '18:00', 1, 1, '受付', '受付（水曜午後）'),
+        # 木曜
+        ('thu_recep_am', 3, 'morning', '08:30', '13:00', 1, 2, '受付', '受付（木曜午前）'),
+        # 金曜
+        ('fri_recep_am', 4, 'morning', '08:30', '13:00', 1, 2, '受付', '受付（金曜午前）'),
+        ('fri_recep_pm', 4, 'afternoon', '13:00', '19:00', 1, 1, '受付', '受付（金曜午後）'),
+        # 土曜
+        ('sat_recep_am', 5, 'morning', '08:30', '13:30', 1, 2, '受付', '受付（土曜午前）'),
+    ]
+    
+    cursor.executemany("""
+        INSERT INTO time_slots 
+        (id, day_of_week, period, start_time, end_time, is_active, required_staff, area, display_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, time_slots)
     
     conn.commit()
     conn.close()

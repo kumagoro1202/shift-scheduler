@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from database import init_fixed_time_slots, get_all_time_slots
+from database import reset_time_slots, get_all_time_slots
 
 
 def reinit_timeslots():
@@ -26,7 +26,7 @@ def reinit_timeslots():
         return
     
     print("\n🔄 時間帯マスタを再初期化中...")
-    init_fixed_time_slots()
+    reset_time_slots()
     print("  ✅ 時間帯マスタを再作成しました")
     
     # 確認
