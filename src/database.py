@@ -190,22 +190,43 @@ def init_fixed_time_slots():
     
     # 固定時間帯データ
     time_slots = [
+        # === リハ室（終日：08:30-19:00、必要人数2名）===
         # 月曜
-        ('mon_am', 0, 'morning', '09:00', '12:30', 1, 2, '受付', '月曜午前'),
-        ('mon_pm', 0, 'afternoon', '15:30', '18:30', 1, 2, '受付', '月曜午後'),
+        ('mon_reha_am', 0, 'morning', '08:30', '13:00', 1, 2, 'リハ室', 'リハ室（月曜午前）'),
+        ('mon_reha_pm', 0, 'afternoon', '13:00', '19:00', 1, 2, 'リハ室', 'リハ室（月曜午後）'),
         # 火曜
-        ('tue_am', 1, 'morning', '09:00', '12:30', 1, 2, '受付', '火曜午前'),
-        ('tue_pm', 1, 'afternoon', '15:30', '18:30', 1, 2, '受付', '火曜午後'),
+        ('tue_reha_am', 1, 'morning', '08:30', '13:00', 1, 2, 'リハ室', 'リハ室（火曜午前）'),
+        ('tue_reha_pm', 1, 'afternoon', '13:00', '19:00', 1, 2, 'リハ室', 'リハ室（火曜午後）'),
         # 水曜
-        ('wed_am', 2, 'morning', '09:00', '12:30', 1, 2, '受付', '水曜午前'),
-        ('wed_pm', 2, 'afternoon', '15:30', '17:30', 1, 2, '受付', '水曜午後'),
+        ('wed_reha_am', 2, 'morning', '08:30', '13:00', 1, 2, 'リハ室', 'リハ室（水曜午前）'),
+        ('wed_reha_pm', 2, 'afternoon', '13:00', '19:00', 1, 2, 'リハ室', 'リハ室（水曜午後）'),
         # 木曜
-        ('thu_am', 3, 'morning', '09:00', '12:30', 1, 2, '受付', '木曜午前'),
+        ('thu_reha_am', 3, 'morning', '08:30', '13:00', 1, 2, 'リハ室', 'リハ室（木曜午前）'),
+        ('thu_reha_pm', 3, 'afternoon', '13:00', '19:00', 1, 2, 'リハ室', 'リハ室（木曜午後）'),
         # 金曜
-        ('fri_am', 4, 'morning', '09:00', '12:30', 1, 2, '受付', '金曜午前'),
-        ('fri_pm', 4, 'afternoon', '15:30', '18:30', 1, 2, '受付', '金曜午後'),
+        ('fri_reha_am', 4, 'morning', '08:30', '13:00', 1, 2, 'リハ室', 'リハ室（金曜午前）'),
+        ('fri_reha_pm', 4, 'afternoon', '13:00', '19:00', 1, 2, 'リハ室', 'リハ室（金曜午後）'),
         # 土曜
-        ('sat_am', 5, 'morning', '09:00', '13:30', 1, 2, '受付', '土曜午前'),
+        ('sat_reha_am', 5, 'morning', '08:30', '13:30', 1, 2, 'リハ室', 'リハ室（土曜午前）'),
+        ('sat_reha_pm', 5, 'afternoon', '13:30', '19:00', 1, 2, 'リハ室', 'リハ室（土曜午後）'),
+        
+        # === 受付（診療時間に合わせて）===
+        # 月曜
+        ('mon_recep_am', 0, 'morning', '08:30', '13:00', 1, 2, '受付', '受付（月曜午前）'),
+        ('mon_recep_pm', 0, 'afternoon', '13:00', '19:00', 1, 1, '受付', '受付（月曜午後）'),
+        # 火曜
+        ('tue_recep_am', 1, 'morning', '08:30', '13:00', 1, 2, '受付', '受付（火曜午前）'),
+        ('tue_recep_pm', 1, 'afternoon', '13:00', '19:00', 1, 1, '受付', '受付（火曜午後）'),
+        # 水曜
+        ('wed_recep_am', 2, 'morning', '08:30', '13:00', 1, 2, '受付', '受付（水曜午前）'),
+        ('wed_recep_pm', 2, 'afternoon', '13:00', '18:00', 1, 1, '受付', '受付（水曜午後）'),
+        # 木曜
+        ('thu_recep_am', 3, 'morning', '08:30', '13:00', 1, 2, '受付', '受付（木曜午前）'),
+        # 金曜
+        ('fri_recep_am', 4, 'morning', '08:30', '13:00', 1, 2, '受付', '受付（金曜午前）'),
+        ('fri_recep_pm', 4, 'afternoon', '13:00', '19:00', 1, 1, '受付', '受付（金曜午後）'),
+        # 土曜
+        ('sat_recep_am', 5, 'morning', '08:30', '13:30', 1, 2, '受付', '受付（土曜午前）'),
     ]
     
     cursor.executemany("""
@@ -258,6 +279,13 @@ def add_employment_pattern_to_employees():
             ALTER TABLE employees 
             ADD COLUMN employment_pattern_id TEXT 
             REFERENCES employment_patterns(id)
+        """)
+        conn.commit()
+    except sqlite3.OperationalError:
+        # カラムが既に存在する場合はスキップ
+        pass
+    
+    conn.close()
 
 
 # ========== 職員管理 ==========
@@ -359,12 +387,6 @@ def update_employee(
     if skill_general is not None:
         updates.append("skill_general = ?")
         params.append(skill_general)
-    if skill_reception_pm is not None:
-        updates.append("skill_reception_pm = ?")
-        params.append(skill_reception_pm)
-    if skill_flexibility is not None:
-        updates.append("skill_flexibility = ?")
-        params.append(skill_flexibility)
     
     if not updates:
         conn.close()
@@ -400,8 +422,18 @@ def get_all_time_slots() -> List[Dict[str, Any]]:
     """全時間帯を取得"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM time_slots ORDER BY start_time")
-    time_slots = [dict(row) for row in cursor.fetchall()]
+    cursor.execute("SELECT * FROM time_slots ORDER BY day_of_week, period, start_time")
+    time_slots = []
+    for row in cursor.fetchall():
+        ts = dict(row)
+        # areaカラムをarea_typeとしても参照できるようにする
+        if 'area' in ts:
+            ts['area_type'] = ts['area']
+        # periodカラムをtime_periodとしても参照できるようにマッピング
+        if 'period' in ts:
+            period_map = {'morning': '午前', 'afternoon': '午後'}
+            ts['time_period'] = period_map.get(ts['period'], '終日')
+        time_slots.append(ts)
     conn.close()
     return time_slots
 
@@ -413,7 +445,17 @@ def get_time_slot_by_id(time_slot_id) -> Optional[Dict[str, Any]]:
     cursor.execute("SELECT * FROM time_slots WHERE id = ?", (time_slot_id,))
     row = cursor.fetchone()
     conn.close()
-    return dict(row) if row else None
+    if row:
+        ts = dict(row)
+        # areaカラムをarea_typeとしても参照できるようにする
+        if 'area' in ts:
+            ts['area_type'] = ts['area']
+        # periodカラムをtime_periodとしても参照できるようにマッピング
+        if 'period' in ts:
+            period_map = {'morning': '午前', 'afternoon': '午後'}
+            ts['time_period'] = period_map.get(ts['period'], '終日')
+        return ts
+    return None
 
 
 # ========== 勤務パターン管理 ==========

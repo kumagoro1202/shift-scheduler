@@ -101,19 +101,36 @@ if st.button("シフト表示へ", key="btn_display", width="stretch"):
 st.markdown("---")
 
 # 診療スケジュール表示
-st.subheader("📅 診療スケジュール")
+st.subheader("📅 診療スケジュールと業務エリア")
 
-with st.expander("診療時間を確認", expanded=False):
-    import pandas as pd
-    
-    schedule_data = {
-        "曜日": ["月", "火", "水", "木", "金", "土", "日"],
-        "午前": ["09:00-12:30", "09:00-12:30", "09:00-12:30", "09:00-12:30", "09:00-12:30", "09:00-13:30", "休診"],
-        "午後": ["15:30-18:30", "15:30-18:30", "15:30-17:30", "休診", "15:30-18:30", "休診", "休診"]
-    }
-    
-    df = pd.DataFrame(schedule_data)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+col_schedule1, col_schedule2 = st.columns(2)
+
+with col_schedule1:
+    with st.expander("診療時間を確認", expanded=False):
+        import pandas as pd
+        
+        schedule_data = {
+            "曜日": ["月", "火", "水", "木", "金", "土", "日"],
+            "午前": ["09:00-12:30", "09:00-12:30", "09:00-12:30", "09:00-12:30", "09:00-12:30", "09:00-13:30", "休診"],
+            "午後": ["15:30-18:30", "15:30-18:30", "15:30-17:30", "休診", "15:30-18:30", "休診", "休診"]
+        }
+        
+        df = pd.DataFrame(schedule_data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+with col_schedule2:
+    with st.expander("業務エリア情報", expanded=False):
+        st.markdown("""
+        ### リハ室（終日運営）
+        - **営業時間**: 08:30〜19:00
+        - **必要人数**: 2名（常時）
+        - **配置可能**: TYPE_A, TYPE_C, TYPE_D
+        
+        ### 受付
+        - **午前**: 08:30〜13:00（必要人数: 1〜2名）
+        - **午後**: 13:00〜19:00（必要人数: 1名）
+        - **配置可能**: TYPE_A, TYPE_B
+        """)
 
 st.markdown("---")
 
@@ -125,20 +142,36 @@ from database import get_all_employees, get_all_time_slots
 employees = get_all_employees()
 time_slots = get_all_time_slots()
 
-info_col1, info_col2, info_col3 = st.columns(3)
+# 業務エリア別の時間帯数
+reha_slots = [ts for ts in time_slots if ts.get('area_type') == 'リハ室']
+reception_slots = [ts for ts in time_slots if ts.get('area_type') == '受付']
+
+info_col1, info_col2, info_col3, info_col4 = st.columns(4)
 
 with info_col1:
     st.metric("登録職員数", f"{len(employees)}名")
 
 with info_col2:
-    st.metric("設定時間帯数", f"{len(time_slots)}個")
+    st.metric("リハ室時間帯", f"{len(reha_slots)}個")
 
 with info_col3:
+    st.metric("受付時間帯", f"{len(reception_slots)}個")
+
+with info_col4:
     if employees:
-        avg_skill = sum(e['skill_score'] for e in employees) / len(employees)
-        st.metric("平均スキルスコア", f"{avg_skill:.1f}")
+        # skill_scoreがない場合は4項目の平均を計算
+        total_avg = 0
+        for e in employees:
+            if 'skill_score' in e and e['skill_score']:
+                total_avg += e['skill_score']
+            else:
+                avg = (e.get('skill_reha', 0) + e.get('skill_reception_am', 0) + 
+                       e.get('skill_reception_pm', 0) + e.get('skill_general', 0)) / 4
+                total_avg += avg
+        avg_skill = total_avg / len(employees)
+        st.metric("平均スキル", f"{avg_skill:.1f}")
     else:
-        st.metric("平均スキルスコア", "-")
+        st.metric("平均スキル", "-")
 
 # 使い方ガイド
 with st.expander("💡 使い方ガイド"):

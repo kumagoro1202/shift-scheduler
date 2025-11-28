@@ -33,6 +33,11 @@ def calculate_skill_score(employee: Dict[str, Any], time_slot: Dict[str, Any]) -
     """
     時間帯に適したスキルスコアを計算
     
+    仕様書 § 6.2:
+    - リハ室: リハ室スキル + 総合対応力
+    - 受付（午前）: 受付午前スキル + 総合対応力
+    - 受付（午後）: 受付午後スキル + 総合対応力
+    
     Args:
         employee: 職員情報
         time_slot: 時間帯情報
@@ -42,22 +47,26 @@ def calculate_skill_score(employee: Dict[str, Any], time_slot: Dict[str, Any]) -
     """
     area_type = time_slot.get('area_type', '受付')
     time_period = time_slot.get('time_period', '終日')
+    general_skill = employee.get('skill_general', employee.get('skill_score', 0))
     
     if area_type == 'リハ室':
-        return employee.get('skill_reha', employee.get('skill_score', 0))
+        reha_skill = employee.get('skill_reha', employee.get('skill_score', 0))
+        return reha_skill + general_skill
     elif area_type == '受付':
         if time_period == '午前':
-            return employee.get('skill_reception_am', employee.get('skill_score', 0))
+            am_skill = employee.get('skill_reception_am', employee.get('skill_score', 0))
+            return am_skill + general_skill
         elif time_period == '午後':
-            return employee.get('skill_reception_pm', employee.get('skill_score', 0))
+            pm_skill = employee.get('skill_reception_pm', employee.get('skill_score', 0))
+            return pm_skill + general_skill
         else:  # 終日
-            # 午前と午後の平均
+            # 午前と午後の平均 + 総合対応力
             am_skill = employee.get('skill_reception_am', employee.get('skill_score', 0))
             pm_skill = employee.get('skill_reception_pm', employee.get('skill_score', 0))
-            return (am_skill + pm_skill) // 2
+            return ((am_skill + pm_skill) // 2) + general_skill
     
-    # フォールバック: 総合対応力または旧skill_score
-    return employee.get('skill_general', employee.get('skill_score', 0))
+    # フォールバック: 総合対応力
+    return general_skill
 
 
 def can_assign_to_area(employee: Dict[str, Any], time_slot: Dict[str, Any]) -> bool:
@@ -117,8 +126,19 @@ def calculate_objective_value(
         for emp in employees_data
     )
     
-    # 目標値
-    target_score = time_slot.get('target_skill_score', 150)
+    # 目標値を動的に計算
+    # V3.0仕様: スキルスコアは基礎スキル + 総合対応力で最大200点/人
+    # 目標値 = 必要人数 × 平均目標スキル（例：150点/人）
+    required_staff = time_slot.get('required_staff', 2)
+    target_per_person = 150  # 基礎スキル75点 + 総合対応力75点
+    target_score = time_slot.get('target_skill_score', required_staff * target_per_person)
+    
+    weight = time_slot.get('skill_weight', 1.0)
+    
+    # 差分の絶対値 × 重み
+    deviation = weight * abs(actual_score - target_score)
+    
+    return deviation
     weight = time_slot.get('skill_weight', 1.0)
     
     # 差分の絶対値 × 重み
