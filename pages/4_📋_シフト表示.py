@@ -8,23 +8,26 @@ from datetime import datetime
 import pandas as pd
 import plotly.express as px
 
-sys.path.append(str(Path(__file__).parent.parent / "src"))
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    base_path = Path(sys._MEIPASS)
+else:
+    base_path = Path(__file__).resolve().parent.parent
 
-from database import (
+src_path = base_path / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+from shift_scheduler import (
     init_database,
-    get_shifts_by_date_range,
-    get_all_employees,
-    get_all_time_slots,
+    list_shifts,
     delete_shift,
-    create_shift,
-    get_break_schedules_by_date,
-    get_employee_by_id
-)
-from utils import get_month_range, get_weekday_jp, export_to_excel
-from break_scheduler import (
+    get_break_schedules,
+    get_employee,
     auto_assign_and_save_breaks,
     validate_reception_coverage,
-    generate_time_intervals
+    get_month_range,
+    get_weekday_jp,
+    export_to_excel,
 )
 
 st.set_page_config(page_title="シフト表示", page_icon="📋", layout="wide")
@@ -56,9 +59,9 @@ with col_date2:
 start_date, end_date = get_month_range(year, month)
 
 # シフト取得
-shifts = get_shifts_by_date_range(start_date, end_date)
+shifts = list_shifts(start_date, end_date)
 
-st.subheader(f"📅 {year}年{month}月のシフト")
+st.subheader(f"📅 {start_date} 〜 {end_date} のシフト")
 
 if not shifts:
     st.warning("⚠️ シフトが登録されていません")
@@ -168,19 +171,20 @@ with tab2:
     if selected_date:
         st.markdown(f"### 📅 {selected_date} の休憩時間")
         
-        break_schedules = get_break_schedules_by_date(selected_date)
+        break_schedules = get_break_schedules(selected_date)
         
         if not break_schedules:
             st.info("この日の休憩スケジュールはまだ設定されていません")
         else:
             # タイムライン表示
             for break_sch in break_schedules:
-                emp = get_employee_by_id(break_sch['employee_id'])
+                employee = get_employee(break_sch['employee_id'])
+                employee_name = employee.name if employee else "不明な職員"
                 
                 col1, col2, col3 = st.columns([2, 3, 2])
                 
                 with col1:
-                    st.write(f"**👤 {emp['name']}**")
+                    st.write(f"**👤 {employee_name}**")
                 
                 with col2:
                     break_info = f"休憩{break_sch['break_number']}: {break_sch['break_start_time']} - {break_sch['break_end_time']}"
@@ -242,7 +246,7 @@ with tab3:
         st.dataframe(
             employee_stats,
             hide_index=True,
-            use_container_width=True
+            width="stretch"
         )
     
     st.markdown("---")
@@ -282,7 +286,7 @@ with tab3:
         st.dataframe(
             time_slot_avg,
             hide_index=True,
-            use_container_width=True
+            width="stretch"
         )
     
     st.markdown("---")

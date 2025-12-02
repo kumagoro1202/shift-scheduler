@@ -13,6 +13,13 @@ streamlit_path = Path(streamlit.__file__).parent
 # プロジェクトルート（build.specがscripts/内にあるため）
 project_root = Path(os.getcwd())
 
+# サンプルデータ入りデータベースを最新化
+sys.path.insert(0, str(project_root))
+from scripts import init_sample_data  # noqa: E402  pylint: disable=wrong-import-position
+
+init_sample_data.seed_sample_data(force=True)
+init_sample_data.copy_seeded_database()
+
 # Streamlitのメタデータとデータファイルを収集
 datas = [
     (str(project_root / 'src'), 'src'),
@@ -40,36 +47,30 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
-        'streamlit',
-        'streamlit.web',
-        'streamlit.web.cli',
-        'streamlit.web.server',
-        'streamlit.web.server.server',
-        'streamlit.web.server.routes',
-        'streamlit.runtime',
-        'streamlit.runtime.scriptrunner',
-        'streamlit.runtime.scriptrunner.magic_funcs',
-        'streamlit.runtime.state',
-        'streamlit.runtime.uploaded_file_manager',
-        'streamlit.components',
-        'streamlit.components.v1',
-        'tornado.web',
-        'tornado.websocket',
-        'tornado.httpserver',
-        'pandas',
-        'openpyxl',
-        'plotly',
-        'pyarrow',
-        'pyarrow.lib',
-        'src.database',
-        'src.optimizer',
-        'src.utils',
-        'src.availability_checker',
-        'src.break_scheduler',
-        'altair',
-        'pydeck',
-        'PIL',
-    ],
+            'streamlit',
+            'streamlit.web',
+            'streamlit.web.cli',
+            'streamlit.web.server',
+            'streamlit.web.server.server',
+            'streamlit.web.server.routes',
+            'streamlit.runtime',
+            'streamlit.runtime.scriptrunner',
+            'streamlit.runtime.scriptrunner.magic_funcs',
+            'streamlit.runtime.state',
+            'streamlit.runtime.uploaded_file_manager',
+            'streamlit.components',
+            'streamlit.components.v1',
+            'tornado.web',
+            'tornado.websocket',
+            'tornado.httpserver',
+            'pandas',
+            'openpyxl',
+            'plotly',
+            'altair',
+            'pydeck',
+            'PIL',
+            'pyarrow',
+        ] + collect_submodules('shift_scheduler') + collect_submodules('pyarrow'),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -1,19 +1,40 @@
 @echo off
-REM ユーザーディレクトリのデータベースをリセット
-echo シフトシステムのデータベースをリセットします
+setlocal
+chcp 65001 > nul
+cls
+
+echo ================================================
+echo   シフト管理システム - データベース初期化
+echo ================================================
 echo.
+echo この操作ではアプリのローカルデータベースを作り直します。
+echo 既存データはすべて削除されます。
+echo.
+set /p ANSWER=続行しますか？ (y/N): 
 
-set USER_DB=%USERPROFILE%\.shift_scheduler\shift.db
+if /I not "%ANSWER%"=="Y" (
+    echo.
+    echo キャンセルしました。
+    goto END
+)
 
-if exist "%USER_DB%" (
-    echo データベースファイルを削除しています...
-    del /F "%USER_DB%"
-    echo 削除完了
-) else (
-    echo データベースファイルは存在しません
+set SCRIPT_DIR=%~dp0
+cd /d "%SCRIPT_DIR%.."
+
+echo.
+echo データベースを初期化しています...
+python scripts\setup_database.py --force --refresh-static
+
+if errorlevel 1 (
+    echo.
+    echo エラーが発生しました。
+    goto END
 )
 
 echo.
-echo 次回アプリケーション起動時に新しいデータベースが作成されます
+echo 完了しました。Streamlit アプリを起動できます。
+
+:END
 echo.
 pause
+endlocal

@@ -2,7 +2,6 @@
 シフト作成システム - メインアプリケーション
 """
 import sys
-import os
 from pathlib import Path
 
 # srcディレクトリをパスに追加
@@ -47,7 +46,7 @@ if __name__ == "__main__":
 
 # Streamlitアプリケーションコード
 import streamlit as st
-from database import init_database, add_v2_columns_to_employees
+from shift_scheduler import init_database, list_employees, list_time_slots
 
 # ページ設定
 st.set_page_config(
@@ -57,13 +56,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# データベース初期化とマイグレーション
+# データベース初期化
 init_database()
-try:
-    add_v2_columns_to_employees()
-except Exception as e:
-    # マイグレーションエラーは無視（既に実行済みの場合など）
-    pass
 
 # メインページ
 st.title("📅 シフト作成システム")
@@ -82,13 +76,13 @@ with col2:
     st.markdown("### 🏖️ 休暇管理")
     st.info("職員の休暇を日付単位で登録します。")
     if st.button("休暇管理へ", key="btn_vacation", width="stretch"):
-        st.switch_page("pages/2__休暇管理.py")
+        st.switch_page("pages/2_🏖️_休暇管理.py")
 
 with col3:
     st.markdown("### 🎯 シフト生成")
     st.success("最適化エンジンでシフトを自動生成します。")
     if st.button("シフト生成へ", key="btn_generate", width="stretch"):
-        st.switch_page("pages/3__シフト生成.py")
+        st.switch_page("pages/3_🎯_シフト生成.py")
 
 st.markdown("---")
 
@@ -96,7 +90,7 @@ st.markdown("---")
 st.markdown("### 📋 シフト表示")
 st.info("生成されたシフトを確認・編集します。")
 if st.button("シフト表示へ", key="btn_display", width="stretch"):
-    st.switch_page("pages/4__シフト表示.py")
+    st.switch_page("pages/4_📋_シフト表示.py")
 
 st.markdown("---")
 
@@ -116,7 +110,7 @@ with col_schedule1:
         }
         
         df = pd.DataFrame(schedule_data)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
 
 with col_schedule2:
     with st.expander("業務エリア情報", expanded=False):
@@ -137,14 +131,12 @@ st.markdown("---")
 # システム情報
 st.markdown("### 📊 システム情報")
 
-from database import get_all_employees, get_all_time_slots
-
-employees = get_all_employees()
-time_slots = get_all_time_slots()
+employees = list_employees()
+time_slots = list_time_slots()
 
 # 業務エリア別の時間帯数
-reha_slots = [ts for ts in time_slots if ts.get('area_type') == 'リハ室']
-reception_slots = [ts for ts in time_slots if ts.get('area_type') == '受付']
+reha_slots = [ts for ts in time_slots if ts.area == 'リハ室']
+reception_slots = [ts for ts in time_slots if ts.area == '受付']
 
 info_col1, info_col2, info_col3, info_col4 = st.columns(4)
 
@@ -159,15 +151,16 @@ with info_col3:
 
 with info_col4:
     if employees:
-        # skill_scoreがない場合は4項目の平均を計算
-        total_avg = 0
-        for e in employees:
-            if 'skill_score' in e and e['skill_score']:
-                total_avg += e['skill_score']
-            else:
-                avg = (e.get('skill_reha', 0) + e.get('skill_reception_am', 0) + 
-                       e.get('skill_reception_pm', 0) + e.get('skill_general', 0)) / 4
-                total_avg += avg
+        total_avg = sum(
+            (
+                emp.skill_reha
+                + emp.skill_reception_am
+                + emp.skill_reception_pm
+                + emp.skill_general
+            )
+            / 4
+            for emp in employees
+        )
         avg_skill = total_avg / len(employees)
         st.metric("平均スキル", f"{avg_skill:.1f}")
     else:

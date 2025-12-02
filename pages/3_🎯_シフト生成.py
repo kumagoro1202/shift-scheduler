@@ -6,18 +6,26 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 
-sys.path.append(str(Path(__file__).parent.parent / "src"))
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    base_path = Path(sys._MEIPASS)
+else:
+    base_path = Path(__file__).resolve().parent.parent
 
-from database import (
+src_path = base_path / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+from shift_scheduler import (
     init_database,
-    get_all_employees,
-    get_all_time_slots,
-    is_employee_available,
+    list_employees,
+    list_time_slots,
     create_shift,
-    delete_shifts_by_date_range
+    delete_shifts_by_date_range,
+    generate_shifts,
+    calculate_skill_balance,
+    get_month_range,
+    ShiftGenerationError,
 )
-from optimizer import generate_shift_v2, calculate_skill_balance_v2
-from utils import get_month_range
 
 st.set_page_config(page_title="シフト生成", page_icon="🎯", layout="wide")
 
@@ -28,8 +36,8 @@ st.title("🎯 シフト自動生成")
 st.markdown("---")
 
 # 職員と時間帯の取得
-employees = get_all_employees()
-time_slots = get_all_time_slots()
+employees = list_employees()
+time_slots = list_time_slots()
 
 # 事前チェック
 if not employees:
@@ -43,10 +51,9 @@ if not time_slots:
     st.stop()
 
 # 必要人数のチェック
-# required_staff (新スキーマ) または required_employees (旧スキーマ) に対応
-total_required = sum(ts.get('required_staff', ts.get('required_employees', 2)) for ts in time_slots)
-if len(employees) < max(ts.get('required_staff', ts.get('required_employees', 2)) for ts in time_slots):
-    st.warning(f"⚠️ 職員数({len(employees)}名)が時間帯の最大必要人数より少ない可能性があります")
+max_required = max(ts.required_staff for ts in time_slots)
+if len(employees) < max_required:
+    st.warning(f"⚠️ 職員数({len(employees)}名)が時間帯の最大必要人数({max_required}名)より少ない可能性があります")
 
 st.subheader("📊 現在の状況")
 
@@ -59,7 +66,10 @@ with col_info2:
     st.metric("時間帯数", f"{len(time_slots)}個")
 
 with col_info3:
-    avg_skill = sum(e['skill_score'] for e in employees) / len(employees)
+    avg_skill = sum(
+        (emp.skill_reha + emp.skill_reception_am + emp.skill_reception_pm + emp.skill_general) / 4
+        for emp in employees
+    ) / len(employees)
     st.metric("平均スキル", f"{avg_skill:.1f}")
 
 st.markdown("---")
@@ -164,65 +174,81 @@ with col_btn1:
                 if deleted > 0:
                     st.info(f"🗑️ 既存のシフト {deleted}件を削除しました")
             
-            # 最適化実行（V3エンジン - availability_checkerを使用）
-            result_shifts = generate_shift_v2(
-                employees=employees,
-                time_slots=time_slots,
-                start_date=start_date,
-                end_date=end_date,
-                availability_func=None,  # V3: availability_checkerを使用
-                optimization_mode=optimization_mode
-            )
-            
-            if result_shifts is None:
+            # 最適化実行（V3エンジン）
+            try:
+                result_shifts = generate_shifts(
+                    employees=employees,
+                    time_slots=time_slots,
+                    start_date=start_date,
+                    end_date=end_date,
+                    optimisation_mode=optimization_mode,
+                )
+            except ShiftGenerationError as exc:
+                issue = exc.issue
                 st.error("❌ シフト生成に失敗しました")
-                st.warning("""
-                **失敗の原因として考えられること:**
-                - 職員数が不足している
-                - 勤務可能情報で「勤務不可」の設定が多すぎる
-                - 時間帯の必要人数が多すぎる
-                
-                **重要:** 
-                - 勤務可能情報を登録していない場合は、自動的に「全日程勤務可能」として扱われます
-                - 上記の診断情報で、どの日時で人数が不足しているか確認してください
-                
-                **対処方法:**
-                1. 「📅 勤務可能情報」ページで勤務不可の設定を見直す
-                2. 「⏰ 時間帯設定」で必要人数を減らす
-                3. 「👥 職員管理」で職員を追加する
-                """)
+                st.warning(issue.message)
+
+                detail_lines = []
+                if issue.date and issue.time_slot_name:
+                    detail_lines.append(f"対象: {issue.date} {issue.time_slot_name}")
+                if issue.required is not None and issue.available is not None:
+                    detail_lines.append(
+                        f"必要人数: {issue.required}名 / 確保できた人数: {issue.available}名"
+                    )
+                if issue.shortage:
+                    detail_lines.append(f"不足人数: {issue.shortage}名")
+
+                if detail_lines:
+                    st.markdown("\n".join(f"- {line}" for line in detail_lines))
+
+                if issue.available_employees:
+                    st.info(
+                        "割り当て可能と判断された職員: "
+                        + ", ".join(issue.available_employees)
+                    )
+
+                if issue.rejections:
+                    with st.expander("除外された理由の詳細"):
+                        for summary in issue.rejections:
+                            label = f"{summary.reason} ({summary.count}名)"
+                            st.write(label)
+                            if summary.examples:
+                                st.write("例: " + ", ".join(summary.examples))
+                st.stop()
             else:
+                shift_payloads = [shift.to_dict() for shift in result_shifts]
+
                 # データベースに保存
                 success_count = 0
                 failed_count = 0
                 error_messages = []
-                
-                for shift in result_shifts:
+
+                for payload in shift_payloads:
                     shift_id = create_shift(
-                        shift['date'],
-                        shift['time_slot_id'],
-                        shift['employee_id']
+                        payload["date"],
+                        payload["time_slot_id"],
+                        payload["employee_id"],
                     )
                     if shift_id:
                         success_count += 1
                     else:
                         failed_count += 1
                         error_messages.append(
-                            f"{shift['date']} {shift['time_slot_name']} - {shift['employee_name']}"
+                            f"{payload['date']} {payload['time_slot_name']} - {payload['employee_name']}"
                         )
-                
+
                 if failed_count > 0:
                     st.warning(f"⚠️ {failed_count}件のシフトが重複のため保存されませんでした")
                     with st.expander("保存に失敗したシフト"):
                         for msg in error_messages[:10]:  # 最初の10件のみ表示
                             st.write(f"- {msg}")
-                
+
                 st.success(f"✅ シフト生成完了！ {success_count}件のシフトを作成しました")
                 if success_count > 0:
                     st.balloons()
-                
-                # 統計情報表示（V2）
-                stats = calculate_skill_balance_v2(result_shifts, time_slots)
+
+                # 統計情報表示
+                stats = calculate_skill_balance(result_shifts, time_slots)
                 
                 st.markdown("### 📊 生成結果の統計")
                 

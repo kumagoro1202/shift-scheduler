@@ -7,24 +7,34 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import calendar
 
-sys.path.append(str(Path(__file__).parent.parent / "src"))
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    base_path = Path(sys._MEIPASS)
+else:
+    base_path = Path(__file__).resolve().parent.parent
 
-from database import (
-    get_all_employees,
-    add_absence,
+src_path = base_path / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+from shift_scheduler import (
+    init_database,
+    list_employees,
+    record_absence,
     remove_absence,
     get_absence,
-    get_absences_by_employee
+    list_absences_for_employee,
 )
 
 st.set_page_config(page_title="休暇管理", page_icon="🏖️", layout="wide")
+
+init_database()
 
 st.title("🏖️ 休暇管理")
 
 st.info("💡 **デフォルト動作**: 休暇登録のない日は自動的に「勤務可能」です。休暇を取る日のみ登録してください。")
 
 # 職員選択
-employees = get_all_employees()
+employees = [emp.to_dict() for emp in list_employees()]
 if not employees:
     st.warning("⚠️ 職員が登録されていません")
     st.stop()
@@ -78,7 +88,8 @@ for week_idx, week in enumerate(cal):
             is_sunday = idx == 6
             
             # 休暇情報取得
-            absence = get_absence(selected_employee['id'], date_str)
+            absence_obj = get_absence(selected_employee['id'], date_str)
+            absence = absence_obj.to_dict() if absence_obj else None
             
             # 表示アイコン
             if is_sunday:
@@ -150,7 +161,7 @@ for week_idx, week in enumerate(cal):
                                 "午前休": "morning",
                                 "午後休": "afternoon"
                             }
-                            add_absence(
+                            record_absence(
                                 selected_employee['id'],
                                 date_str,
                                 type_map[absence_type],
@@ -184,7 +195,7 @@ with col1:
         while current <= bulk_end:
             # 日曜日はスキップ
             if current.weekday() != 6:
-                add_absence(
+                record_absence(
                     selected_employee['id'],
                     current.strftime("%Y-%m-%d"),
                     type_map[bulk_type],
@@ -203,7 +214,14 @@ with col2:
     month_start = datetime(year, month, 1).strftime("%Y-%m-%d")
     month_end = datetime(year, month, calendar.monthrange(year, month)[1]).strftime("%Y-%m-%d")
     
-    absences = get_absences_by_employee(selected_employee['id'], month_start, month_end)
+    absences = [
+        absence.to_dict()
+        for absence in list_absences_for_employee(
+            selected_employee['id'],
+            start_date=month_start,
+            end_date=month_end,
+        )
+    ]
     
     if absences:
         for abs_data in absences:
