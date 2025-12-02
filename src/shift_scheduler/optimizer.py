@@ -224,7 +224,15 @@ def generate_shifts(
         daily_slots = all_slots_by_day.get(weekday, [])
         daily_assignments: List[GeneratedShift] = []
 
-        for slot in daily_slots:
+        # Sort slots to process morning before afternoon for full-day work preference
+        morning_slots = [s for s in daily_slots if s.period == "morning"]
+        afternoon_slots = [s for s in daily_slots if s.period == "afternoon"]
+        
+        # Track which employees worked in the morning (by area) for full-day preference
+        morning_workers_by_area: Dict[str, List[int]] = {}
+
+        # Process morning slots first
+        for slot in morning_slots:
             required = slot.required_staff
             available: List[Employee] = []
             rejection_log: Dict[str, List[str]] = {}
@@ -276,6 +284,121 @@ def generate_shifts(
                 raise ShiftGenerationError(issue)
 
             selected = _select_employees_for_slot(available, slot, required, work_count, optimisation_mode)
+            if len(selected) < required:
+                issue = ShiftGenerationIssue(
+                    code="selection_failed",
+                    message=(
+                        f"{date_str} {slot.display_name}の割り当てに失敗しました。"
+                        "最適化パラメータを見直してください。"
+                    ),
+                    date=date_str,
+                    time_slot_id=slot.id,
+                    time_slot_name=slot.display_name,
+                    required=required,
+                    available=len(available),
+                    shortage=required - len(selected),
+                    available_employees=[emp.name for emp in available],
+                )
+                raise ShiftGenerationError(issue)
+
+            for employee in selected:
+                shift = GeneratedShift(
+                    date=date_str,
+                    time_slot_id=slot.id,
+                    employee_id=employee.id,
+                    employee_name=employee.name,
+                    time_slot_name=slot.display_name,
+                    start_time=slot.start_time,
+                    end_time=slot.end_time,
+                    skill_score=calculate_skill_score(employee, slot),
+                    employee=employee,
+                    time_slot=slot,
+                )
+                schedule.append(shift)
+                daily_assignments.append(shift)
+                work_count[employee.id] += 1
+                
+                # Track morning workers by area for full-day preference
+                morning_workers_by_area.setdefault(slot.area, []).append(employee.id)
+
+        # Process afternoon slots with full-day work preference
+        for slot in afternoon_slots:
+            required = slot.required_staff
+            available: List[Employee] = []
+            rejection_log: Dict[str, List[str]] = {}
+
+            # Check if there are morning workers in the same area who can work afternoon
+            morning_workers = morning_workers_by_area.get(slot.area, [])
+            afternoon_capable_morning_workers: List[Employee] = []
+
+            for employee in employees:
+                if not _can_assign_to_area(employee, slot):
+                    rejection_log.setdefault("担当エリアの要件を満たしていません", []).append(employee.name)
+                    continue
+                # avoid double booking on the same day
+                conflict = any(
+                    s.employee_id == employee.id and s.date == date_str and check_time_overlap(slot, s.time_slot)
+                    for s in schedule
+                )
+                if conflict:
+                    rejection_log.setdefault("同日の別時間帯と重複しています", []).append(employee.name)
+                    continue
+                if not is_employee_available(employee, date_str, slot):
+                    reason = describe_unavailability(employee, date_str, slot) or "勤務不可の設定があります"
+                    rejection_log.setdefault(reason, []).append(employee.name)
+                    continue
+                available.append(employee)
+                
+                # Prefer employees who worked the morning shift in the same area
+                if employee.id in morning_workers:
+                    afternoon_capable_morning_workers.append(employee)
+
+            if len(available) < required:
+                rejections = [
+                    RejectionSummary(
+                        reason=reason,
+                        count=len(names),
+                        examples=sorted(names)[:5],
+                    )
+                    for reason, names in sorted(
+                        rejection_log.items(), key=lambda item: len(item[1]), reverse=True
+                    )
+                ]
+
+                issue = ShiftGenerationIssue(
+                    code="insufficient_staff",
+                    message=(
+                        f"{date_str} {slot.display_name}で必要人数{required}名を確保できませんでした。"
+                    ),
+                    date=date_str,
+                    time_slot_id=slot.id,
+                    time_slot_name=slot.display_name,
+                    required=required,
+                    available=len(available),
+                    shortage=required - len(available),
+                    available_employees=[emp.name for emp in available],
+                    rejections=rejections,
+                )
+                raise ShiftGenerationError(issue)
+
+            # Prioritize morning workers for full-day work, but still use selection logic
+            # First try to fill with morning workers
+            selected: List[Employee] = []
+            if afternoon_capable_morning_workers:
+                needed_from_morning = min(len(afternoon_capable_morning_workers), required)
+                selected = _select_employees_for_slot(
+                    afternoon_capable_morning_workers, slot, needed_from_morning, work_count, optimisation_mode
+                )
+            
+            # Fill remaining slots with other available employees
+            if len(selected) < required:
+                remaining_available = [e for e in available if e not in selected]
+                additional_needed = required - len(selected)
+                additional = _select_employees_for_slot(
+                    remaining_available, slot, additional_needed, work_count, optimisation_mode
+                )
+                selected.extend(additional)
+
             if len(selected) < required:
                 issue = ShiftGenerationIssue(
                     code="selection_failed",

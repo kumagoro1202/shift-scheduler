@@ -25,6 +25,8 @@ from shift_scheduler import (
     calculate_skill_balance,
     get_month_range,
     ShiftGenerationError,
+    auto_assign_and_save_breaks,
+    list_shifts,
 )
 
 st.set_page_config(page_title="シフト生成", page_icon="🎯", layout="wide")
@@ -246,6 +248,39 @@ with col_btn1:
                 st.success(f"✅ シフト生成完了！ {success_count}件のシフトを作成しました")
                 if success_count > 0:
                     st.balloons()
+
+                # 休憩時間の自動割り当て
+                if success_count > 0:
+                    with st.spinner("⏰ 休憩時間を自動割り当て中..."):
+                        # 生成期間の各日について休憩を割り当て
+                        total_break_count = 0
+                        break_warnings = []
+                        current_date = datetime.strptime(start_date, "%Y-%m-%d")
+                        end_date_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                        
+                        while current_date <= end_date_dt:
+                            date_str = current_date.strftime("%Y-%m-%d")
+                            # その日のシフトを取得
+                            daily_shifts = list_shifts(date_str, date_str)
+                            
+                            if daily_shifts:
+                                saved_count, is_valid, warnings = auto_assign_and_save_breaks(
+                                    date_str,
+                                    daily_shifts
+                                )
+                                total_break_count += saved_count
+                                if warnings:
+                                    break_warnings.extend([f"{date_str}: {w}" for w in warnings])
+                            
+                            current_date += timedelta(days=1)
+                        
+                        if total_break_count > 0:
+                            st.success(f"✅ 休憩時間を {total_break_count}件割り当てました")
+                        
+                        if break_warnings:
+                            with st.expander("⚠️ 休憩割り当ての警告"):
+                                for warning in break_warnings[:20]:  # 最大20件表示
+                                    st.write(f"- {warning}")
 
                 # 統計情報表示
                 stats = calculate_skill_balance(result_shifts, time_slots)

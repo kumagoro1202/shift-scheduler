@@ -4,7 +4,7 @@
 import streamlit as st
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
 
@@ -75,51 +75,217 @@ tab1, tab2, tab3, tab4 = st.tabs(["📅 カレンダー表示", "☕ 休憩時�
 
 # タブ1: カレンダー表示
 with tab1:
-    # 日付ごとにグループ化
+    st.subheader("📅 カレンダー形式")
+    
+    # シフトデータを日付ごとに整理
     df = pd.DataFrame(shifts)
     
-    # 日付のユニークリストを取得
-    dates = sorted(df['date'].unique())
+    # フィルターとコントロールの設定
+    col_filter1, col_filter2, col_filter3 = st.columns([2, 2, 1])
     
-    for date in dates:
-        date_shifts = df[df['date'] == date]
-        weekday = get_weekday_jp(date)
+    with col_filter1:
+        # 業務エリア（リハ室/受付）フィルター
+        if len(df) > 0:
+            # エリア名を抽出（例: "リハ室（月曜午前）" -> "リハ室"）
+            df['area'] = df['time_slot_name'].str.extract(r'^([^（]+)', expand=False)
+            all_areas = sorted(df['area'].unique().tolist())
+        else:
+            all_areas = []
         
-        # 日付ヘッダー
-        is_weekend = datetime.strptime(date, "%Y-%m-%d").weekday() >= 5
+        selected_areas = st.multiselect(
+            "🏢 業務エリアで絞り込み",
+            options=all_areas,
+            default=all_areas,
+            help="表示したい業務エリアを選択してください"
+        )
+    
+    with col_filter2:
+        # セッション状態の初期化
+        if 'expander_state' not in st.session_state:
+            st.session_state.expander_state = False
         
-        with st.expander(
-            f"📅 {date} ({weekday})" + (" 🎌" if is_weekend else ""),
-            expanded=len(dates) <= 7  # 7日以内なら展開
-        ):
-            # 時間帯ごとにグループ化
-            time_slot_groups = date_shifts.groupby(['time_slot_id', 'time_slot_name', 'start_time', 'end_time'])
-            
-            for (ts_id, ts_name, start_time, end_time), ts_shifts in time_slot_groups:
-                st.markdown(f"**{ts_name}** ({start_time} - {end_time})")
+        # 一括開閉ボタン
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("📖 すべて開く", use_container_width=True):
+                st.session_state.expander_state = True
+        with col_btn2:
+            if st.button("📕 すべて閉じる", use_container_width=True):
+                st.session_state.expander_state = False
+    
+    with col_filter3:
+        # 状態をリセット
+        if st.button("🔄 リセット", use_container_width=True):
+            st.session_state.expander_state = False
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # フィルター適用
+    if selected_areas and len(df) > 0:
+        df_filtered = df[df['area'].isin(selected_areas)]
+    else:
+        df_filtered = df
+    
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    
+    # 日付リストを生成
+    display_dates = []
+    current = start_dt
+    while current < end_dt:
+        display_dates.append(current)
+        current += timedelta(days=1)
+    
+    # 週単位でグループ化
+    weeks = []
+    current_week = []
+    for date_obj in display_dates:
+        day_of_week = date_obj.weekday()
+        
+        # 月曜日（0）の場合、かつすでに週の途中なら新しい週を開始
+        if day_of_week == 0 and current_week:
+            weeks.append(current_week)
+            current_week = []
+        
+        # 週の最初に空白を追加（週の途中から始まる場合）
+        if not current_week and len(weeks) == 0:
+            for _ in range(day_of_week):
+                current_week.append(None)
+        
+        current_week.append(date_obj)
+        
+        # 日曜日（6）の場合は週を完了
+        if day_of_week == 6:
+            weeks.append(current_week)
+            current_week = []
+    
+    # 最後の週が残っている場合は追加
+    if current_week:
+        # 日曜日まで空白で埋める
+        while len(current_week) < 7:
+            current_week.append(None)
+        weeks.append(current_week)
+    
+    # 曜日ヘッダー
+    weekday_names = ['月', '火', '水', '木', '金', '土', '日']
+    header_cols = st.columns(7)
+    for idx, day_name in enumerate(weekday_names):
+        with header_cols[idx]:
+            st.markdown(f"**{day_name}**")
+    
+    # カレンダー本体
+    for week_idx, week in enumerate(weeks):
+        cols = st.columns(7)
+        for idx, date_obj in enumerate(week):
+            with cols[idx]:
+                if date_obj is None:
+                    st.markdown("&nbsp;")
+                    continue
                 
-                # この時間帯の割当職員を表示
-                cols = st.columns(len(ts_shifts) + 1)
+                date_str = date_obj.strftime("%Y-%m-%d")
+                day = date_obj.day
+                is_sunday = idx == 6
                 
-                for idx, (_, shift) in enumerate(ts_shifts.iterrows()):
-                    with cols[idx]:
-                        st.info(f"👤 {shift['employee_name']}\n💪 スキル: {shift['skill_score']}")
+                # その日のシフトを取得（フィルター適用）
+                day_shifts = df_filtered[df_filtered['date'] == date_str] if len(df_filtered) > 0 else pd.DataFrame()
+                
+                # 背景色の設定
+                if is_sunday:
+                    bg_color = "#2c2c2c"
+                    text_color = "white"
+                elif len(day_shifts) > 0:
+                    # シフトありの日
+                    avg_skill = day_shifts['skill_score'].mean()
+                    if avg_skill >= 4.0:
+                        bg_color = "#51cf66"  # 緑: 高スキル
+                    elif avg_skill >= 3.0:
+                        bg_color = "#74c0fc"  # 青: 中スキル
+                    else:
+                        bg_color = "#ffa94d"  # オレンジ: 低スキル
+                    text_color = "white"
+                else:
+                    # シフトなしの日
+                    bg_color = "#868e96"
+                    text_color = "white"
+                
+                # 日付ヘッダーを表示
+                st.markdown(f"""
+                    <div style="background-color: {bg_color}; padding: 5px; border-radius: 5px 5px 0 0; text-align: center;">
+                        <div style="font-size: 16px; font-weight: bold; color: {text_color};">{day}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # シフト情報を表示
+                if is_sunday:
+                    st.markdown(f"""
+                        <div style="background-color: {bg_color}; padding: 10px; border-radius: 0 0 5px 5px; text-align: center; min-height: 100px;">
+                            <div style="font-size: 20px; color: {text_color};">🌙</div>
+                            <div style="font-size: 12px; color: {text_color};">定休</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                elif len(day_shifts) > 0:
+                    # エリアと時間帯の情報を抽出
+                    day_shifts_copy = day_shifts.copy()
+                    # エリア名を抽出（例: "リハ室（月曜午前）" -> "リハ室"）
+                    day_shifts_copy['area'] = day_shifts_copy['time_slot_name'].str.extract(r'^([^（]+)', expand=False)
+                    # 時間帯を抽出（例: "リハ室（月曜午前）" -> "午前"）
+                    day_shifts_copy['period'] = day_shifts_copy['time_slot_name'].str.extract(r'(午前|午後)', expand=False)
+                    
+                    # エリアごとにグループ化
+                    area_groups = day_shifts_copy.groupby('area')
+                    
+                    with st.container():
+                        st.markdown(f"""
+                            <div style="background-color: white; padding: 5px; border: 1px solid #dee2e6; border-radius: 0 0 5px 5px; min-height: 100px;">
+                        """, unsafe_allow_html=True)
                         
-                        # 削除ボタン
-                        if st.button("🗑️", key=f"del_{shift['id']}", help="このシフトを削除"):
-                            if delete_shift(shift['id']):
-                                st.success("削除しました")
-                                st.rerun()
-                
-                # スキル合計を表示
-                total_skill = ts_shifts['skill_score'].sum()
-                avg_skill = ts_shifts['skill_score'].mean()
-                
-                with cols[-1]:
-                    st.metric("合計", f"{total_skill:.0f}")
-                    st.metric("平均", f"{avg_skill:.1f}")
-                
-                st.markdown("---")
+                        for area_name, area_shifts in area_groups:
+                            # エリアごとのexpander
+                            expander_expanded = st.session_state.expander_state
+                            
+                            # エリアのアイコンを設定
+                            area_icon = "🏥" if "リハ" in area_name else "📞" if "受付" in area_name else "🏢"
+                            
+                            with st.expander(f"{area_icon} {area_name}", expanded=expander_expanded):
+                                # 時間帯（午前/午後）でさらにグループ化
+                                period_groups = area_shifts.groupby(['period', 'start_time', 'end_time'])
+                                
+                                for (period, start_time, end_time), period_shifts in period_groups:
+                                    st.markdown(f"**{period}** ({start_time} - {end_time})")
+                                    
+                                    # 職員を表示
+                                    for _, shift in period_shifts.iterrows():
+                                        col_a, col_b = st.columns([3, 1])
+                                        with col_a:
+                                            st.text(f"👤 {shift['employee_name']}")
+                                            st.caption(f"💪 {shift['skill_score']:.1f}")
+                                        with col_b:
+                                            if st.button("🗑️", key=f"del_{shift['id']}", help="削除"):
+                                                if delete_shift(shift['id']):
+                                                    st.success("削除")
+                                                    st.rerun()
+                                    
+                                    # 時間帯ごとの小計
+                                    period_total = period_shifts['skill_score'].sum()
+                                    period_avg = period_shifts['skill_score'].mean()
+                                    st.caption(f"合計: {period_total:.1f} / 平均: {period_avg:.1f}")
+                                    st.markdown("---")
+                        
+                        # シフト数とスキル平均を表示
+                        shift_count = len(day_shifts)
+                        avg_skill = day_shifts['skill_score'].mean()
+                        st.metric("シフト数", f"{shift_count}件")
+                        st.metric("平均スキル", f"{avg_skill:.1f}")
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                        <div style="background-color: {bg_color}; padding: 10px; border-radius: 0 0 5px 5px; text-align: center; min-height: 100px;">
+                            <div style="font-size: 20px; color: {text_color};">📭</div>
+                            <div style="font-size: 12px; color: {text_color};">シフトなし</div>
+                        </div>
+                    """, unsafe_allow_html=True)
 
 # タブ2: 休憩時間管理
 with tab2:
@@ -157,13 +323,18 @@ with tab2:
             
             if saved_count > 0:
                 st.success(f"✅ {saved_count}件の休憩時間を割り当てました")
+            elif saved_count == 0 and warnings:
+                st.info("ℹ️ 休憩時間の割り当て:")
+                for warning in warnings:
+                    st.info(f"  {warning}")
             
-            if not is_valid:
+            if not is_valid and saved_count > 0:
                 st.warning("⚠️ 以下の警告があります:")
                 for warning in warnings:
                     st.warning(warning)
             
-            st.rerun()
+            if saved_count > 0:
+                st.rerun()
     
     st.markdown("---")
     
@@ -239,7 +410,7 @@ with tab3:
             title='職員別勤務日数',
             labels={'employee_name': '職員名', '勤務日数': '日数'}
         )
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
     
     with col_chart2:
         # 表で表示
@@ -279,7 +450,7 @@ with tab3:
             title='日別・時間帯別スキル合計',
             markers=True
         )
-        st.plotly_chart(fig2, width="stretch")
+        st.plotly_chart(fig2, use_container_width=True)
     
     with col_ts2:
         # 時間帯別平均

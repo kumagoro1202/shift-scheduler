@@ -57,25 +57,25 @@ _TIME_SLOT_DEFINITIONS = [
     ("mon_reha_am", 0, "morning", "08:30", "13:00", 1, 2, "リハ室", "リハ室（月曜午前）", 1.0, None),
     ("mon_reha_pm", 0, "afternoon", "13:00", "19:00", 1, 2, "リハ室", "リハ室（月曜午後）", 1.0, None),
     ("mon_recep_am", 0, "morning", "08:30", "13:00", 1, 2, "受付", "受付（月曜午前）", 1.0, None),
-    ("mon_recep_pm", 0, "afternoon", "13:00", "19:00", 1, 1, "受付", "受付（月曜午後）", 1.0, None),
+    ("mon_recep_pm", 0, "afternoon", "13:00", "19:00", 1, 2, "受付", "受付（月曜午後）", 1.0, None),
     # Tuesday
     ("tue_reha_am", 1, "morning", "08:30", "13:00", 1, 2, "リハ室", "リハ室（火曜午前）", 1.0, None),
     ("tue_reha_pm", 1, "afternoon", "13:00", "19:00", 1, 2, "リハ室", "リハ室（火曜午後）", 1.0, None),
     ("tue_recep_am", 1, "morning", "08:30", "13:00", 1, 2, "受付", "受付（火曜午前）", 1.0, None),
-    ("tue_recep_pm", 1, "afternoon", "13:00", "19:00", 1, 1, "受付", "受付（火曜午後）", 1.0, None),
+    ("tue_recep_pm", 1, "afternoon", "13:00", "19:00", 1, 2, "受付", "受付（火曜午後）", 1.0, None),
     # Wednesday
     ("wed_reha_am", 2, "morning", "08:30", "13:00", 1, 2, "リハ室", "リハ室（水曜午前）", 1.0, None),
     ("wed_reha_pm", 2, "afternoon", "13:00", "18:00", 1, 2, "リハ室", "リハ室（水曜午後）", 1.0, None),
     ("wed_recep_am", 2, "morning", "08:30", "13:00", 1, 2, "受付", "受付（水曜午前）", 1.0, None),
-    ("wed_recep_pm", 2, "afternoon", "13:00", "18:00", 1, 1, "受付", "受付（水曜午後）", 1.0, None),
+    ("wed_recep_pm", 2, "afternoon", "13:00", "18:00", 1, 2, "受付", "受付（水曜午後）", 1.0, None),
     # Thursday (morning only)
     ("thu_reha_am", 3, "morning", "08:30", "13:00", 1, 2, "リハ室", "リハ室（木曜午前）", 1.0, None),
     ("thu_recep_am", 3, "morning", "08:30", "13:00", 1, 2, "受付", "受付（木曜午前）", 1.0, None),
     # Friday
     ("fri_reha_am", 4, "morning", "08:30", "13:00", 1, 2, "リハ室", "リハ室（金曜午前）", 1.0, None),
     ("fri_reha_pm", 4, "afternoon", "13:00", "19:00", 1, 2, "リハ室", "リハ室（金曜午後）", 1.0, None),
-    ("fri_recep_am", 4, "morning", "08:30", "13:00", 1, 2, "受付", "受付（金曜午前）", 1.0, None),
-    ("fri_recep_pm", 4, "afternoon", "13:00", "19:00", 1, 1, "受付", "受付（金曜午後）", 1.0, None),
+    ("fri_recep_am", 4, "morning", "08:30", "13:00", 1, 2, "受付", "受付（火曜午前）", 1.0, None),
+    ("fri_recep_pm", 4, "afternoon", "13:00", "19:00", 1, 2, "受付", "受付（金曜午後）", 1.0, None),
     # Saturday (morning only)
     ("sat_reha_am", 5, "morning", "08:30", "13:30", 1, 2, "リハ室", "リハ室（土曜午前）", 1.0, None),
     ("sat_recep_am", 5, "morning", "08:30", "13:30", 1, 2, "受付", "受付（土曜午前）", 1.0, None),
