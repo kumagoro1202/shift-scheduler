@@ -39,21 +39,68 @@ st.title("📋 シフト表示・編集")
 st.markdown("---")
 
 # 年月選択
-col_date1, col_date2 = st.columns(2)
+# セッション状態の初期化
+if 'display_year' not in st.session_state:
+    st.session_state.display_year = datetime.now().year
+if 'display_month' not in st.session_state:
+    st.session_state.display_month = datetime.now().month
 
+# 矢印ボタンの処理（selectbox作成前に実行）
+col_arrow1, col_date1, col_date2, col_arrow2 = st.columns([1, 3, 3, 1])
+
+# 前月ボタンの処理
+prev_clicked = col_arrow1.button("◀", key="prev_month_display")
+if prev_clicked:
+    if st.session_state.display_month == 1:
+        st.session_state.display_month = 12
+        st.session_state.display_year -= 1
+    else:
+        st.session_state.display_month -= 1
+
+# 次月ボタンの処理
+next_clicked = col_arrow2.button("▶", key="next_month_display")
+if next_clicked:
+    if st.session_state.display_month == 12:
+        st.session_state.display_month = 1
+        st.session_state.display_year += 1
+    else:
+        st.session_state.display_month += 1
+
+# 年のselectbox
 with col_date1:
-    year = st.selectbox(
+    year_options = list(range(datetime.now().year - 1, datetime.now().year + 3))
+    if st.session_state.display_year in year_options:
+        year_index = year_options.index(st.session_state.display_year)
+    else:
+        year_index = 0
+    
+    def on_year_change_display():
+        st.session_state.display_year = st.session_state.year_select_display
+    
+    st.selectbox(
         "年",
-        options=range(datetime.now().year - 1, datetime.now().year + 2),
-        index=1
+        options=year_options,
+        index=year_index,
+        key="year_select_display",
+        on_change=on_year_change_display
     )
 
+# 月のselectbox
 with col_date2:
-    month = st.selectbox(
+    def on_month_change_display():
+        st.session_state.display_month = st.session_state.month_select_display
+    
+    st.selectbox(
         "月",
-        options=range(1, 13),
-        index=datetime.now().month - 1
+        options=list(range(1, 13)),
+        index=st.session_state.display_month - 1,
+        key="month_select_display",
+        on_change=on_month_change_display
     )
+
+# プルダウンの値をセッション状態に反映
+year = st.session_state.display_year
+month = st.session_state.display_month
 
 # 対象期間
 start_date, end_date = get_month_range(year, month)

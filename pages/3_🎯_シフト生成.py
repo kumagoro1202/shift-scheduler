@@ -79,6 +79,74 @@ st.markdown("---")
 # 生成パラメータ設定
 st.subheader("⚙️ 生成パラメータ")
 
+# 年月選択
+st.markdown("#### 📅 対象期間")
+
+# セッション状態の初期化
+if 'shift_gen_year' not in st.session_state:
+    st.session_state.shift_gen_year = datetime.now().year
+if 'shift_gen_month' not in st.session_state:
+    st.session_state.shift_gen_month = datetime.now().month
+
+# 矢印ボタンの処理（selectbox作成前に実行）
+col_arrow1, col_date1, col_date2, col_arrow2 = st.columns([1, 3, 3, 1])
+
+# 前月ボタンの処理
+prev_clicked = col_arrow1.button("◀", key="prev_month_gen")
+if prev_clicked:
+    if st.session_state.shift_gen_month == 1:
+        st.session_state.shift_gen_month = 12
+        st.session_state.shift_gen_year -= 1
+    else:
+        st.session_state.shift_gen_month -= 1
+
+# 次月ボタンの処理
+next_clicked = col_arrow2.button("▶", key="next_month_gen")
+if next_clicked:
+    if st.session_state.shift_gen_month == 12:
+        st.session_state.shift_gen_month = 1
+        st.session_state.shift_gen_year += 1
+    else:
+        st.session_state.shift_gen_month += 1
+
+# 年のselectbox
+with col_date1:
+    year_options = list(range(datetime.now().year - 1, datetime.now().year + 3))
+    if st.session_state.shift_gen_year in year_options:
+        year_index = year_options.index(st.session_state.shift_gen_year)
+    else:
+        year_index = 0
+    
+    def on_year_change_gen():
+        st.session_state.shift_gen_year = st.session_state.year_select_gen
+    
+    st.selectbox(
+        "年",
+        options=year_options,
+        index=year_index,
+        key="year_select_gen",
+        on_change=on_year_change_gen
+    )
+
+# 月のselectbox
+with col_date2:
+    def on_month_change_gen():
+        st.session_state.shift_gen_month = st.session_state.month_select_gen
+    
+    st.selectbox(
+        "月",
+        options=list(range(1, 13)),
+        index=st.session_state.shift_gen_month - 1,
+        key="month_select_gen",
+        on_change=on_month_change_gen
+    )
+
+# プルダウンの値をセッション状態に反映
+year = st.session_state.shift_gen_year
+month = st.session_state.shift_gen_month
+
+st.markdown("#### ⚙️ その他のパラメータ")
+
 # 期間選択
 col_param1, col_param2 = st.columns(2)
 
@@ -90,23 +158,10 @@ with col_param1:
     )
 
 if method == "月単位で選択":
-    col_month1, col_month2 = st.columns(2)
-    
-    with col_month1:
-        year = st.selectbox(
-            "年",
-            options=range(datetime.now().year, datetime.now().year + 2),
-            index=0
-        )
-    
-    with col_month2:
-        month = st.selectbox(
-            "月",
-            options=range(1, 13),
-            index=datetime.now().month - 1
-        )
-    
-    start_date, end_date = get_month_range(year, month)
+    start_date, end_date = get_month_range(
+        st.session_state.shift_gen_year, 
+        st.session_state.shift_gen_month
+    )
 else:
     col_date1, col_date2 = st.columns(2)
     

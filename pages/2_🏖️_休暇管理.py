@@ -40,11 +40,68 @@ if not employees:
     st.stop()
 
 # 年月選択
-col1, col2 = st.columns(2)
-with col1:
-    year = st.selectbox("年", range(datetime.now().year, datetime.now().year + 2), index=0)
-with col2:
-    month = st.selectbox("月", range(1, 13), index=datetime.now().month - 1)
+# セッション状態の初期化
+if 'vacation_year' not in st.session_state:
+    st.session_state.vacation_year = datetime.now().year
+if 'vacation_month' not in st.session_state:
+    st.session_state.vacation_month = datetime.now().month
+
+# 矢印ボタンの処理（selectbox作成前に実行）
+col_arrow1, col_date1, col_date2, col_arrow2 = st.columns([1, 3, 3, 1])
+
+# 前月ボタンの処理
+prev_clicked = col_arrow1.button("◀", key="prev_month_vacation")
+if prev_clicked:
+    if st.session_state.vacation_month == 1:
+        st.session_state.vacation_month = 12
+        st.session_state.vacation_year -= 1
+    else:
+        st.session_state.vacation_month -= 1
+
+# 次月ボタンの処理
+next_clicked = col_arrow2.button("▶", key="next_month_vacation")
+if next_clicked:
+    if st.session_state.vacation_month == 12:
+        st.session_state.vacation_month = 1
+        st.session_state.vacation_year += 1
+    else:
+        st.session_state.vacation_month += 1
+
+# 年のselectbox
+with col_date1:
+    year_options = list(range(datetime.now().year - 1, datetime.now().year + 3))
+    if st.session_state.vacation_year in year_options:
+        year_index = year_options.index(st.session_state.vacation_year)
+    else:
+        year_index = 0
+    
+    def on_year_change():
+        st.session_state.vacation_year = st.session_state.year_select_vacation
+    
+    st.selectbox(
+        "年",
+        options=year_options,
+        index=year_index,
+        key="year_select_vacation",
+        on_change=on_year_change
+    )
+
+# 月のselectbox
+with col_date2:
+    def on_month_change():
+        st.session_state.vacation_month = st.session_state.month_select_vacation
+    
+    st.selectbox(
+        "月",
+        options=list(range(1, 13)),
+        index=st.session_state.vacation_month - 1,
+        key="month_select_vacation",
+        on_change=on_month_change
+    )
+
+# プルダウンの値をセッション状態に反映
+year = st.session_state.vacation_year
+month = st.session_state.vacation_month
 
 # 20日締めの期間を取得
 start_date_str, end_date_str = get_month_range(year, month)

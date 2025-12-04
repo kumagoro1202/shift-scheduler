@@ -42,83 +42,259 @@ PATTERN_CATEGORY_LABELS = {
 EMPLOYMENT_PATTERNS = list_employment_patterns()
 PATTERN_LOOKUP = {pattern.id: pattern for pattern in EMPLOYMENT_PATTERNS}
 
-# 編集モードの判定
-edit_mode = 'edit_employee_id' in st.session_state and st.session_state.get('edit_employee_id')
+# 通常モード：タブで表示
+tab1, tab2 = st.tabs(["職員一覧", "新規登録"])
 
-if edit_mode:
-    # 編集モード：専用画面を表示
-    st.subheader("✏️ 職員情報の編集")
+# タブ1: 職員一覧
+with tab1:
+    st.subheader("登録済み職員")
     
-    # 戻るボタン
-    if st.button("← 職員一覧に戻る"):
-        del st.session_state['edit_employee_id']
-        st.rerun()
+    employees = list_employees()
     
-    st.markdown("---")
-    
-    employee = get_employee(st.session_state['edit_employee_id'])
-    if not employee:
-        st.error("職員情報が見つかりません")
-        del st.session_state['edit_employee_id']
-        st.rerun()
-    
-    # 編集フォーム（後で定義）
-    
-else:
-    # 通常モード：タブで表示
-    employee = None
-    tab1, tab2 = st.tabs(["職員一覧", "新規登録"])
-
-# タブ1: 職員一覧（編集モードでない場合のみ表示）
-if not edit_mode:
-    with tab1:
-        st.subheader("登録済み職員")
+    if not employees:
+        st.info("📝 職員が登録されていません。「新規登録」タブから登録してください。")
+    else:
+        # 職員データの準備
+        employee_data = []
+        for emp in employees:
+            pattern = PATTERN_LOOKUP.get(emp.employment_pattern_id)
+            pattern_name = pattern.name if pattern else "未設定"
+            pattern_time = f"{pattern.start_time}-{pattern.end_time}" if pattern else "-"
+            pattern_category = pattern.category if pattern else "unknown"
+            total_skill = emp.skill_reha + emp.skill_reception_am + emp.skill_reception_pm + emp.skill_general
+            
+            employee_data.append({
+                'id': emp.id,
+                'name': emp.name,
+                'employee_type': emp.employee_type,
+                'employment_type': emp.employment_type,
+                'pattern_name': pattern_name,
+                'pattern_time': pattern_time,
+                'pattern_id': emp.employment_pattern_id or '',
+                'pattern_category': pattern_category,
+                'skill_reha': emp.skill_reha,
+                'skill_reception_am': emp.skill_reception_am,
+                'skill_reception_pm': emp.skill_reception_pm,
+                'skill_general': emp.skill_general,
+                'total_skill': total_skill
+            })
         
-        employees = list_employees()
+        # フィルター・ソート設定エリア
+        col_filter1, col_filter2, col_filter3, col_filter4 = st.columns(4)
         
-        if not employees:
-            st.info("📝 職員が登録されていません。「新規登録」タブから登録してください。")
+        with col_filter1:
+            # 職員タイプフィルター（日本語表示用のマッピング）
+            EMPLOYEE_TYPE_FILTER_LABELS = {
+                "TYPE_A": "リハ室・受付両方可能",
+                "TYPE_B": "受付のみ",
+                "TYPE_C": "リハ室のみ(正職員)",
+                "TYPE_D": "リハ室のみ(パート)"
+            }
+            all_employee_types_codes = ["全て"] + sorted(list(set([e['employee_type'] for e in employee_data])))
+            all_employee_types_labels = ["全て"] + [EMPLOYEE_TYPE_FILTER_LABELS.get(code, code) for code in all_employee_types_codes[1:]]
+            filter_employee_type_label = st.selectbox("職員タイプ", all_employee_types_labels, index=0)
+            # ラベルからコードに逆変換
+            if filter_employee_type_label == "全て":
+                filter_employee_type = "全て"
+            else:
+                filter_employee_type = [k for k, v in EMPLOYEE_TYPE_FILTER_LABELS.items() if v == filter_employee_type_label][0]
+        
+        with col_filter2:
+            # 雇用形態フィルター
+            all_employment_types = ["全て"] + sorted(list(set([e['employment_type'] for e in employee_data])))
+            filter_employment_type = st.selectbox("雇用形態", all_employment_types, index=0)
+        
+        with col_filter3:
+            # 勤務パターンフィルター
+            all_patterns = ["全て"] + sorted(list(set([e['pattern_name'] for e in employee_data])))
+            filter_pattern = st.selectbox("勤務パターン", all_patterns, index=0)
+        
+        with col_filter4:
+            # ソート順
+            sort_by = st.selectbox(
+                "並び順",
+                ["雇用形態・勤務パターン", "スキルスコア(降順)", "スキルスコア(昇順)", "名前"],
+                index=0
+            )
+        
+        # フィルター適用
+        filtered_data = employee_data
+        if filter_employee_type != "全て":
+            filtered_data = [e for e in filtered_data if e['employee_type'] == filter_employee_type]
+        if filter_employment_type != "全て":
+            filtered_data = [e for e in filtered_data if e['employment_type'] == filter_employment_type]
+        if filter_pattern != "全て":
+            filtered_data = [e for e in filtered_data if e['pattern_name'] == filter_pattern]
+        
+        # ソート処理
+        if sort_by == "スキルスコア(降順)":
+            filtered_data.sort(key=lambda x: x['total_skill'], reverse=True)
+        elif sort_by == "スキルスコア(昇順)":
+            filtered_data.sort(key=lambda x: x['total_skill'])
+        elif sort_by == "名前":
+            filtered_data.sort(key=lambda x: x['name'])
+        else:  # 雇用形態・勤務パターン
+            filtered_data.sort(key=lambda x: (x['employment_type'], x['pattern_id'], x['name']))
+        
+        st.markdown("---")
+        
+        # フィルター結果の表示
+        if not filtered_data:
+            st.warning("🔍 該当する職員が見つかりませんでした。")
         else:
-            # 職員リストを表示
-            for emp in employees:
-                pattern = PATTERN_LOOKUP.get(emp.employment_pattern_id)
-                with st.expander(f"**{emp.name}** - {EMPLOYEE_TYPE_LABELS.get(emp.employee_type, 'TYPE_A')}"):
-                    col1, col2 = st.columns([2, 1])
-                    
-                    with col1:
-                        st.markdown(f"**職員タイプ**: {emp.employee_type}")
-                        st.markdown(f"**雇用形態**: {emp.employment_type}")
-                        if pattern:
-                            st.markdown(
-                                f"**勤務パターン**: {pattern.name} ({pattern.start_time}-{pattern.end_time})"
-                            )
-                        else:
-                            st.markdown("**勤務パターン**: 未設定")
+            st.caption(f"📊 表示件数: {len(filtered_data)}名 / 全{len(employee_data)}名")
+            
+            # 表形式で一覧表示
+            # ヘッダー
+            header_cols = st.columns([2, 2, 2, 2, 1, 1, 1, 1, 1, 1.5])
+            headers = ["名前", "職員タイプ", "雇用形態", "勤務パターン", "リハ室", "受付AM", "受付PM", "総合", "合計", "操作"]
+            for col, header in zip(header_cols, headers):
+                col.markdown(f"**{header}**")
+            
+            st.markdown("---")
+            
+            # データ行 - 編集モード対応
+            for emp_data in filtered_data:
+                # 編集モードかどうかを判定
+                is_editing = st.session_state.get(f"editing_{emp_data['id']}", False)
+                
+                if is_editing:
+                    # 編集モード：フォームで表示
+                    with st.form(key=f"edit_form_{emp_data['id']}"):
+                        form_cols = st.columns([2, 2, 2, 2, 1, 1, 1, 1, 1, 1.5])
                         
-                        # スキルスコア表示
-                        st.markdown("**スキルスコア**:")
-                        skill_cols = st.columns(4)
-                        with skill_cols[0]:
-                            st.metric("リハ室", emp.skill_reha)
-                        with skill_cols[1]:
-                            st.metric("受付(午前)", emp.skill_reception_am)
-                        with skill_cols[2]:
-                            st.metric("受付(午後)", emp.skill_reception_pm)
-                        with skill_cols[3]:
-                            st.metric("総合対応力", emp.skill_general)
-                    
-                    with col2:
-                        # 編集・削除ボタン
-                        if st.button("✏️ 編集", key=f"edit_{emp.id}"):
-                            st.session_state['edit_employee_id'] = emp.id
-                            st.rerun()
+                        # 名前
+                        with form_cols[0]:
+                            edit_name = st.text_input("名前", value=emp_data['name'], label_visibility="collapsed", key=f"name_{emp_data['id']}")
                         
-                        if st.button("🗑️ 削除", key=f"delete_{emp.id}", type="secondary"):
-                            if delete_employee(emp.id):
-                                st.success(f"✅ {emp.name}さんを削除しました")
-                                st.rerun()
+                        # 職員タイプ
+                        with form_cols[1]:
+                            type_options = ["TYPE_A", "TYPE_B", "TYPE_C", "TYPE_D"]
+                            type_labels_short = {
+                                "TYPE_A": "リハ室・受付両方",
+                                "TYPE_B": "受付のみ",
+                                "TYPE_C": "リハ室のみ(正)",
+                                "TYPE_D": "リハ室のみ(パ)"
+                            }
+                            current_type_idx = type_options.index(emp_data['employee_type'])
+                            edit_type = st.selectbox("タイプ", type_options, index=current_type_idx, 
+                                                    format_func=lambda x: type_labels_short[x],
+                                                    label_visibility="collapsed", key=f"type_{emp_data['id']}")
+                        
+                        # 雇用形態
+                        with form_cols[2]:
+                            employment_options = ["正職員", "パート"]
+                            current_employment_idx = 0 if emp_data['employment_type'] == "正職員" else 1
+                            edit_employment = st.selectbox("雇用形態", employment_options, index=current_employment_idx,
+                                                          label_visibility="collapsed", key=f"employment_{emp_data['id']}")
+                        
+                        # 勤務パターン
+                        with form_cols[3]:
+                            if edit_employment == "正職員":
+                                pattern_category = st.session_state.get(f"pattern_cat_{emp_data['id']}", emp_data['pattern_category'])
+                                if pattern_category not in ["full_time", "short_time"]:
+                                    pattern_category = "full_time"
                             else:
-                                st.error("削除に失敗しました")
+                                pattern_category = "part_time"
+                            
+                            pattern_candidates = [p for p in EMPLOYMENT_PATTERNS if p.category == pattern_category]
+                            if pattern_candidates:
+                                current_pattern_idx = next((i for i, p in enumerate(pattern_candidates) if p.id == emp_data['pattern_id']), 0)
+                                edit_pattern = st.selectbox("パターン", pattern_candidates, index=current_pattern_idx,
+                                                           format_func=lambda p: p.name,
+                                                           label_visibility="collapsed", key=f"pattern_{emp_data['id']}")
+                                edit_pattern_id = edit_pattern.id
+                            else:
+                                st.caption("パターンなし")
+                                edit_pattern_id = None
+                        
+                        # スキルスコア
+                        with form_cols[4]:
+                            edit_reha = st.number_input("リハ室", 0, 100, emp_data['skill_reha'], 
+                                                       disabled=(edit_type == "TYPE_B"),
+                                                       label_visibility="collapsed", key=f"reha_{emp_data['id']}")
+                        with form_cols[5]:
+                            edit_am = st.number_input("受付AM", 0, 100, emp_data['skill_reception_am'],
+                                                     disabled=(edit_type in ["TYPE_C", "TYPE_D"]),
+                                                     label_visibility="collapsed", key=f"am_{emp_data['id']}")
+                        with form_cols[6]:
+                            edit_pm = st.number_input("受付PM", 0, 100, emp_data['skill_reception_pm'],
+                                                     disabled=(edit_type in ["TYPE_C", "TYPE_D"]),
+                                                     label_visibility="collapsed", key=f"pm_{emp_data['id']}")
+                        with form_cols[7]:
+                            edit_general = st.number_input("総合", 0, 100, emp_data['skill_general'],
+                                                          label_visibility="collapsed", key=f"general_{emp_data['id']}")
+                        
+                        with form_cols[8]:
+                            total = edit_reha + edit_am + edit_pm + edit_general
+                            st.markdown(f"**{total}**")
+                        
+                        # 保存・キャンセルボタン
+                        with form_cols[9]:
+                            btn_col1, btn_col2 = st.columns(2)
+                            with btn_col1:
+                                save_btn = st.form_submit_button("💾", help="保存")
+                            with btn_col2:
+                                cancel_btn = st.form_submit_button("❌", help="キャンセル")
+                            
+                            if save_btn:
+                                # 更新処理
+                                update_params = {
+                                    'name': edit_name.strip(),
+                                    'employee_type': edit_type,
+                                    'employment_type': edit_employment,
+                                    'employment_pattern_id': edit_pattern_id,
+                                    'skill_reha': edit_reha if edit_type != "TYPE_B" else 0,
+                                    'skill_reception_am': edit_am if edit_type not in ["TYPE_C", "TYPE_D"] else 0,
+                                    'skill_reception_pm': edit_pm if edit_type not in ["TYPE_C", "TYPE_D"] else 0,
+                                    'skill_general': edit_general
+                                }
+                                if update_employee(emp_data['id'], **update_params):
+                                    st.session_state[f"editing_{emp_data['id']}"] = False
+                                    st.success(f"✅ {edit_name}さんの情報を更新しました")
+                                    st.rerun()
+                                else:
+                                    st.error("更新に失敗しました")
+                            
+                            if cancel_btn:
+                                st.session_state[f"editing_{emp_data['id']}"] = False
+                                st.rerun()
+                else:
+                    # 通常表示モード
+                    data_cols = st.columns([2, 2, 2, 2, 1, 1, 1, 1, 1, 1.5])
+                    
+                    # 職員タイプを日本語表示に変換
+                    employee_type_labels_short = {
+                        "TYPE_A": "リハ室・受付両方",
+                        "TYPE_B": "受付のみ",
+                        "TYPE_C": "リハ室のみ(正)",
+                        "TYPE_D": "リハ室のみ(パ)"
+                    }
+                    employee_type_display = employee_type_labels_short.get(emp_data['employee_type'], emp_data['employee_type'])
+                    
+                    data_cols[0].markdown(emp_data['name'])
+                    data_cols[1].markdown(employee_type_display)
+                    data_cols[2].markdown(emp_data['employment_type'])
+                    data_cols[3].markdown(f"{emp_data['pattern_name']}")
+                    data_cols[4].markdown(f"{emp_data['skill_reha']}")
+                    data_cols[5].markdown(f"{emp_data['skill_reception_am']}")
+                    data_cols[6].markdown(f"{emp_data['skill_reception_pm']}")
+                    data_cols[7].markdown(f"{emp_data['skill_general']}")
+                    data_cols[8].markdown(f"**{emp_data['total_skill']}**")
+                    
+                    with data_cols[9]:
+                        btn_col1, btn_col2 = st.columns(2)
+                        with btn_col1:
+                            if st.button("✏️", key=f"edit_{emp_data['id']}", help="編集"):
+                                st.session_state[f"editing_{emp_data['id']}"] = True
+                                st.rerun()
+                        with btn_col2:
+                            if st.button("🗑️", key=f"delete_{emp_data['id']}", help="削除"):
+                                if delete_employee(emp_data['id']):
+                                    st.success(f"✅ {emp_data['name']}さんを削除しました")
+                                    st.rerun()
+                                else:
+                                    st.error("削除に失敗しました")
             
             st.markdown("---")
             
@@ -141,16 +317,15 @@ if not edit_mode:
                 avg_reha = sum(e.skill_reha for e in employees) / len(employees)
                 st.metric("平均リハ室スキル", f"{avg_reha:.1f}")
 
-    # タブ2: 新規登録
-    # タブ2: 新規登録
-    with tab2:
-        st.subheader("新規職員の登録")
+# タブ2: 新規登録
+with tab2:
+    st.subheader("新規職員の登録")
 
-# 入力フォーム（編集モードまたは新規登録モード）
+# 入力フォーム（新規登録モードのみ）
 with st.form("employee_form"):
     name = st.text_input(
         "職員名 *",
-        value=employee.name if employee else "",
+        value="",
         placeholder="例: 山田太郎",
     )
 
@@ -160,23 +335,17 @@ with st.form("employee_form"):
     col1, col2 = st.columns(2)
 
     with col1:
-        employment_type_index = 0
-        if employee and employee.employment_type == "パート":
-            employment_type_index = 1
         employment_type = st.radio(
             "雇用形態 *",
             ["正職員", "パート"],
-            index=employment_type_index,
+            index=0,
         )
 
     with col2:
-        employee_type_index = ["TYPE_A", "TYPE_B", "TYPE_C", "TYPE_D"].index(
-            employee.employee_type if employee else "TYPE_A"
-        )
         employee_type = st.selectbox(
             "職員タイプ *",
             ["TYPE_A", "TYPE_B", "TYPE_C", "TYPE_D"],
-            index=employee_type_index,
+            index=0,
             format_func=lambda x: EMPLOYEE_TYPE_LABELS[x],
         )
 
@@ -184,15 +353,7 @@ with st.form("employee_form"):
     if employment_type == "正職員":
         category_options = ["full_time", "short_time"]
         default_category = "full_time"
-        if employee and employee.employment_pattern_id:
-            pattern = PATTERN_LOOKUP.get(employee.employment_pattern_id)
-            if pattern:
-                default_category = pattern.category
-        category_index = (
-            category_options.index(default_category)
-            if default_category in category_options
-            else 0
-        )
+        category_index = 0
         pattern_category = st.radio(
             "勤務区分",
             category_options,
@@ -208,15 +369,7 @@ with st.form("employee_form"):
     ]
 
     if pattern_candidates:
-        default_pattern_id = (
-            employee.employment_pattern_id
-            if employee and employee.employment_pattern_id
-            else pattern_candidates[0].id
-        )
-        default_index = next(
-            (idx for idx, pattern in enumerate(pattern_candidates) if pattern.id == default_pattern_id),
-            0,
-        )
+        default_index = 0
         selected_pattern = st.selectbox(
             "勤務パターン *",
             pattern_candidates,
@@ -239,7 +392,7 @@ with st.form("employee_form"):
             "リハ室スキル",
             min_value=0,
             max_value=100,
-            value=employee.skill_reha if employee else 0,
+            value=0,
             disabled=(employee_type == "TYPE_B"),
             help="TYPE_Bは受付専門のため入力不可",
         )
@@ -248,7 +401,7 @@ with st.form("employee_form"):
             "受付午前スキル",
             min_value=0,
             max_value=100,
-            value=employee.skill_reception_am if employee else 0,
+            value=0,
             disabled=(employee_type in ["TYPE_C", "TYPE_D"]),
             help="TYPE_C, TYPE_Dはリハ室専門のため入力不可",
         )
@@ -258,7 +411,7 @@ with st.form("employee_form"):
             "受付午後スキル",
             min_value=0,
             max_value=100,
-            value=employee.skill_reception_pm if employee else 0,
+            value=0,
             disabled=(employee_type in ["TYPE_C", "TYPE_D"]),
             help="TYPE_C, TYPE_Dはリハ室専門のため入力不可",
         )
@@ -267,34 +420,24 @@ with st.form("employee_form"):
             "総合対応力",
             min_value=0,
             max_value=100,
-            value=employee.skill_general if employee else 0,
+            value=0,
             help="柔軟性や総合的な対応力を評価",
         )
     
     st.markdown("---")
     
-    col_btn1, col_btn2 = st.columns(2)
-    
-    with col_btn1:
-        submit_button = st.form_submit_button(
-            "✅ 更新" if edit_mode else "✅ 登録",
-            type="primary",
-            width="stretch"
-        )
-    
-    with col_btn2:
-        if edit_mode:
-            cancel_button = st.form_submit_button(
-                "❌ キャンセル",
-                width="stretch"
-            )
+    submit_button = st.form_submit_button(
+        "✅ 登録",
+        type="primary",
+        use_container_width=True
+    )
 
 # フォーム送信処理
 if submit_button:
     if not name.strip():
         st.error("❌ 職員名を入力してください")
     else:
-        # 職員情報を登録/更新
+        # 職員情報を登録
         update_params = {
             'name': name.strip(),
             'employee_type': employee_type,
@@ -306,27 +449,14 @@ if submit_button:
             'skill_general': skill_flex
         }
         
-        if edit_mode:
-            # 更新
-            if update_employee(st.session_state['edit_employee_id'], **update_params):
-                st.success(f"✅ {name}さんの情報を更新しました")
-                del st.session_state['edit_employee_id']
-                st.rerun()
-            else:
-                st.error("更新に失敗しました")
+        # 新規登録
+        employee_id = create_employee(**update_params)
+        if employee_id:
+            st.success(f"✅ {name}さんを登録しました（ID: {employee_id}）")
+            st.balloons()
+            st.rerun()
         else:
-            # 新規登録
-            employee_id = create_employee(**update_params)
-            if employee_id:
-                st.success(f"✅ {name}さんを登録しました（ID: {employee_id}）")
-                st.balloons()
-                st.rerun()
-            else:
-                st.error("登録に失敗しました")
-
-if edit_mode and 'cancel_button' in locals() and cancel_button:
-    del st.session_state['edit_employee_id']
-    st.rerun()
+            st.error("登録に失敗しました")
 
 # サイドバーにヘルプ
 with st.sidebar:
