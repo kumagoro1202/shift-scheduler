@@ -62,50 +62,63 @@ def _find_covering_shift(shift_blocks: Sequence[dict], window: TimeWindow) -> Op
     return shift_blocks[0] if shift_blocks else None
 
 
-def auto_assign_and_save_breaks(date: str, shifts: Sequence[dict]) -> Tuple[int, bool, List[str]]:
-    reception_shifts = [s for s in shifts if s.get("time_slot", {}).get("area") == "受付"]
-    if len(reception_shifts) < 3:
-        return 0, True, ["受付職員が3名未満のため自動割り当てをスキップしました"]
+def _filter_reception_shifts(shifts: Sequence[dict]) -> List[dict]:
+    """Filter shifts to get only reception area shifts."""
+    return [s for s in shifts if s.get("time_slot", {}).get("area") == "受付"]
 
-    coverage_limit = len(reception_shifts) - 2
-    window_usage: Dict[TimeWindow, List[int]] = {window: [] for window in PREFERRED_WINDOWS}
 
+def _group_shifts_by_employee(shifts: Sequence[dict]) -> Dict[int, List[dict]]:
+    """Group shifts by employee ID."""
     employee_blocks: Dict[int, List[dict]] = {}
-    for shift in reception_shifts:
+    for shift in shifts:
         employee_blocks.setdefault(shift["employee_id"], []).append(shift)
+    return employee_blocks
 
-    assignments: List[Tuple[int, TimeWindow]] = []
-    warnings: List[str] = []
 
-    for employee_id, blocks in employee_blocks.items():
-        pattern_id = blocks[0]["employee"].get("employment_pattern_id") if blocks[0].get("employee") else None
-        pattern = get_employment_pattern(pattern_id) if pattern_id else None
-        break_windows = _break_windows_for_pattern(pattern.break_hours if pattern else 0.0)
-        for window in break_windows:
-            usable_windows = list(PREFERRED_WINDOWS)
-            if window not in usable_windows:
-                usable_windows.insert(0, window)
-            assigned = False
-            for candidate in usable_windows:
-                if candidate not in window_usage:
-                    window_usage[candidate] = []
-                if len(window_usage[candidate]) >= coverage_limit:
-                    continue
-                target_shift = _find_covering_shift(blocks, candidate)
-                if not target_shift:
-                    continue
-                window_usage[candidate].append(employee_id)
-                assignments.append((employee_id, candidate))
-                assigned = True
-                break
-            if not assigned:
-                warnings.append(f"{blocks[0]['employee_name']}の休憩時間を自動割り当てできませんでした")
+def _assign_break_for_employee(
+    employee_id: int,
+    blocks: List[dict],
+    window_usage: Dict[TimeWindow, List[int]],
+    coverage_limit: int,
+) -> Optional[TimeWindow]:
+    """Try to assign a break window for an employee.
+    
+    Returns assigned window if successful, None otherwise.
+    """
+    pattern_id = blocks[0]["employee"].get("employment_pattern_id") if blocks[0].get("employee") else None
+    pattern = get_employment_pattern(pattern_id) if pattern_id else None
+    break_windows = _break_windows_for_pattern(pattern.break_hours if pattern else 0.0)
+    
+    for window in break_windows:
+        usable_windows = list(PREFERRED_WINDOWS)
+        if window not in usable_windows:
+            usable_windows.insert(0, window)
+        
+        for candidate in usable_windows:
+            if candidate not in window_usage:
+                window_usage[candidate] = []
+            if len(window_usage[candidate]) >= coverage_limit:
+                continue
+            target_shift = _find_covering_shift(blocks, candidate)
+            if not target_shift:
+                continue
+            window_usage[candidate].append(employee_id)
+            return candidate
+    
+    return None
 
-    if not assignments:
-        return 0, False, warnings or ["有効な休憩割り当てがありません"]
 
+def _save_break_assignments(
+    date: str,
+    assignments: List[Tuple[int, TimeWindow]],
+    employee_blocks: Dict[int, List[dict]],
+) -> int:
+    """Save break assignments to database.
+    
+    Returns number of breaks saved.
+    """
     delete_break_schedules_by_date_range(date, date)
-
+    
     saved = 0
     break_counts: Dict[int, int] = {}
     for employee_id, window in assignments:
@@ -121,27 +134,71 @@ def auto_assign_and_save_breaks(date: str, shifts: Sequence[dict]) -> Tuple[int,
             break_end_time=window[1],
         )
         saved += 1
+    
+    return saved
 
+
+def auto_assign_and_save_breaks(date: str, shifts: Sequence[dict]) -> Tuple[int, bool, List[str]]:
+    reception_shifts = _filter_reception_shifts(shifts)
+    if len(reception_shifts) < 3:
+        return 0, True, ["受付職員が3名未満のため自動割り当てをスキップしました"]
+
+    coverage_limit = len(reception_shifts) - 2
+    window_usage: Dict[TimeWindow, List[int]] = {window: [] for window in PREFERRED_WINDOWS}
+    employee_blocks = _group_shifts_by_employee(reception_shifts)
+
+    assignments: List[Tuple[int, TimeWindow]] = []
+    warnings: List[str] = []
+
+    for employee_id, blocks in employee_blocks.items():
+        assigned_window = _assign_break_for_employee(employee_id, blocks, window_usage, coverage_limit)
+        if assigned_window:
+            assignments.append((employee_id, assigned_window))
+        else:
+            warnings.append(f"{blocks[0]['employee_name']}の休憩時間を自動割り当てできませんでした")
+
+    if not assignments:
+        return 0, False, warnings or ["有効な休憩割り当てがありません"]
+
+    saved = _save_break_assignments(date, assignments, employee_blocks)
     return saved, not warnings, warnings
 
 
+def _is_employee_on_break(employee_id: int, window: TimeWindow, break_schedules: Sequence[dict]) -> bool:
+    """Check if employee is on break during the given window."""
+    breaks_for_employee = [b for b in break_schedules if b["employee_id"] == employee_id]
+    return any(
+        _window_overlaps(window, (b["break_start_time"], b["break_end_time"]))
+        for b in breaks_for_employee
+    )
+
+
+def _count_working_staff(
+    shifts: Sequence[dict],
+    break_schedules: Sequence[dict],
+    window: TimeWindow,
+) -> int:
+    """Count number of staff working (not on break) during a time window."""
+    working = 0
+    for shift in shifts:
+        shift_window = (shift["start_time"], shift["end_time"])
+        if not _window_overlaps(window, shift_window):
+            continue
+        if not _is_employee_on_break(shift["employee_id"], window, break_schedules):
+            working += 1
+    return working
+
+
 def validate_reception_coverage(date: str, shifts: Sequence[dict], break_schedules: Sequence[dict]) -> Tuple[bool, List[str]]:
-    reception_shifts = [s for s in shifts if s.get("time_slot", {}).get("area") == "受付"]
+    reception_shifts = _filter_reception_shifts(shifts)
     if not reception_shifts:
         return True, []
 
     warnings: List[str] = []
     intervals = generate_time_intervals("08:30", "19:00", 15)
+    
     for window in intervals:
-        working = 0
-        for shift in reception_shifts:
-            shift_window = (shift["start_time"], shift["end_time"])
-            if not _window_overlaps(window, shift_window):
-                continue
-            breaks_for_employee = [b for b in break_schedules if b["employee_id"] == shift["employee_id"]]
-            on_break = any(_window_overlaps(window, (b["break_start_time"], b["break_end_time"])) for b in breaks_for_employee)
-            if not on_break:
-                working += 1
+        working = _count_working_staff(reception_shifts, break_schedules, window)
         if working < 2:
             warnings.append(f"{window[0]}-{window[1]}の受付常駐人数が不足しています ({working}名)")
 

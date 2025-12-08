@@ -7,12 +7,11 @@ from pathlib import Path
 # パスを追加
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.break_scheduler import (
+from src.shift_scheduler.breaks import (
     generate_time_intervals,
-    generate_break_slots,
-    is_overlapping,
-    parse_time,
-    format_time
+    auto_assign_and_save_breaks,
+    validate_reception_coverage,
+    _window_overlaps
 )
 
 

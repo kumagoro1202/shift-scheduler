@@ -7,16 +7,14 @@ from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from availability_checker import is_employee_available, get_unavailable_reason
-from database import (
+from shift_scheduler.availability import is_employee_available, describe_unavailability
+from shift_scheduler.database import (
     init_database,
     create_employee,
-    add_absence,
-    get_all_time_slots,
-    init_employment_patterns_table,
-    init_fixed_time_slots,
-    init_employee_absences_table,
-    add_employment_pattern_to_employees
+    record_absence,
+    list_time_slots,
+    list_employment_patterns,
+    get_employment_pattern
 )
 
 
