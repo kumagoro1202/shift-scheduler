@@ -9,12 +9,20 @@
 **V3.0の主要機能**:
 
 - 4項目スキルスコアシステム（リハ室、受付午前/午後、総合対応力）
-- 職員タイプ制約（TYPE_A〜D）による業務エリア制限
+- 職員タイプ制約（TYPE_A～TYPE_F）による業務エリア制限
 - 勤務形態管理（フルタイム、時短、パート）
 - 日付単位の休暇管理（運用の簡素化）
 - 診療時間の固定化（システム定義の時間帯）
 - 休憩ローテーション機能
 - 最適化モード選択（バランス/スキル重視/日数重視）
+
+**職員タイプ**:
+- **TYPE_A**: オールラウンダー（リハ室・受付両方可能）
+- **TYPE_B**: 受付専任（正職員・パート共通）
+- **TYPE_C**: リハ室専任（正職員）
+- **TYPE_D**: リハ室専任（パート）
+- **TYPE_E**: 受付専任（パート）
+- **TYPE_F**: 受付専任（時短）
 
 ## 2. 採用アーキテクチャ
 
@@ -127,7 +135,7 @@ CREATE TABLE employees (
     
     -- 職員タイプと勤務形態
     employee_type TEXT DEFAULT 'TYPE_A' 
-        CHECK(employee_type IN ('TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D')),
+        CHECK(employee_type IN ('TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D', 'TYPE_E', 'TYPE_F')),
     employment_type TEXT DEFAULT '正職員' 
         CHECK(employment_type IN ('正職員', 'パート')),
     employment_pattern_id TEXT REFERENCES employment_patterns(id),
@@ -156,14 +164,30 @@ CREATE TABLE employment_patterns (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     category TEXT NOT NULL CHECK(category IN ('full_time', 'short_time', 'part_time')),
+    day_type TEXT NOT NULL,           -- 'weekday_full', 'wednesday', 'thu_sat', 'all_days'
+    pattern_symbol TEXT,               -- 'A', 'B', 'C', '○', '△', '1', '2', '3', 'PA', 'P3' など
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
     break_hours REAL NOT NULL,
     work_hours REAL NOT NULL,
     can_work_afternoon BOOLEAN DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CHECK(day_type IN ('weekday_full', 'wednesday', 'thu_sat', 'all_days'))
 );
 ```
+
+**フィールド説明**:
+- `day_type`: 勤務形態が適用される曜日タイプ
+  - `weekday_full`: 月火金（9時間拘束）
+  - `wednesday`: 水曜日（8時間拘束）
+  - `thu_sat`: 木曜・土曜（4時間）
+  - `all_days`: 時短勤務など曜日横断的な勤務形態
+- `pattern_symbol`: 勤務表CSVでの表記記号
+  - 月火金: A（早出）, B（通常）, C（遅出）
+  - 水曜日: ○（早出）, 通常, △（遅出）
+  - 木曜・土曜: 1（早出）, 2（通常）, 3（遅出）
+  - パート: PA（午前4時間）, P3（午後まで）
+- `break_hours`: 休憩時間（基本的に正職員B/C、通常/△は2時間連続、忙しい日は分割可）
 
 #### employee_absences（休暇登録）- V3.0新規
 
@@ -358,3 +382,31 @@ shift_app/
 │   └── shift.db        # データベース（自動作成）
 └── exports/            # Excel出力先
 ```
+
+## 9. 今後の拡張性
+
+### 9.1 想定される機能追加
+
+- 複数月のシフト一括生成
+- シフトパターンのテンプレート保存
+- 職員からの希望シフト登録機能
+- 勤務実績の集計とレポート出力
+- モバイル対応（スマートフォンでの閲覧）
+- **勤務表CSVからの自動インポート機能**: 既存の勤務表（CSV形式）を読み込んで勤務形態や休暇情報を自動登録
+- **残業時間の集計とレポート出力**: 休憩短縮時の残業時間を自動計上し、月次・年次レポートを作成
+
+### 9.2 スケーラビリティ
+
+現在は小規模施設（5〜10名）を想定していますが、以下の改善で大規模化に対応可能:
+
+- データベースをPostgreSQLなどに移行
+- 最適化ソルバーをOR-Toolsに変更
+- マルチユーザー対応（認証・権限管理）
+- クラウドホスティング対応
+
+---
+
+**文書管理情報**
+- バージョン: 3.0
+- 最終更新日: 2025年12月21日
+- 対象システム: シフト作成システム V3.0
