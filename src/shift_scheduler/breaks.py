@@ -139,6 +139,11 @@ def _save_break_assignments(
 
 
 def auto_assign_and_save_breaks(date: str, shifts: Sequence[dict]) -> Tuple[int, bool, List[str]]:
+    """受付職員の休憩時間を自動割り当てする。
+    
+    正職員は基本的に2時間連続で休憩を取得するが、
+    忙しい日は分割することもある（当日の判断）。
+    """
     reception_shifts = _filter_reception_shifts(shifts)
     if len(reception_shifts) < 3:
         return 0, True, ["受付職員が3名未満のため自動割り当てをスキップしました"]

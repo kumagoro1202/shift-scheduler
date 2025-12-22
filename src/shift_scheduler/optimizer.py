@@ -64,12 +64,17 @@ def check_time_overlap(slot_a: TimeSlot, slot_b: TimeSlot) -> bool:
 
 
 def calculate_skill_score(employee: Employee, time_slot: TimeSlot) -> int:
-    """Compute the score contribution for an employee in a slot."""
-
+    """職員のスキルスコアを計算する。
+    
+    受付業務では医事能力（保険登録、会計など）を優先的に評価する。
+    各時間帯のスキルスコアを均等化することで、日によるサービス品質の
+    偏りを防止する。
+    """
     general = employee.skill_general
     if time_slot.area == "リハ室":
         return employee.skill_reha + general
     if time_slot.area == "受付":
+        # 受付スキルには医事能力（保険登録、会計など）が含まれる
         if time_slot.period == "morning":
             return employee.skill_reception_am + general
         if time_slot.period == "afternoon":
@@ -116,7 +121,14 @@ def _select_by_skill_score(
     time_slot: TimeSlot,
     current_selected: List[Employee],
 ) -> List[Employee]:
-    """Select employees to match target skill score."""
+    """スキル能力の平均化を優先する選択アルゴリズム。
+    
+    各時間帯において、配置される職員のスキル能力を均等化する。
+    特に受付業務では医事能力（保険登録、会計など）を優先する。
+    
+    目標値に近いスキルスコアを持つ職員を選択することで、
+    日によって能力が偏らないよう、各時間帯の職員スキルレベルを均一化する。
+    """
     selected: List[Employee] = list(current_selected)
     remaining = list(candidates)
     
@@ -129,6 +141,7 @@ def _select_by_skill_score(
         remaining_slots = max(1, count - len(selected))
         per_person_target = (target - current_score) / remaining_slots
         
+        # 目標スコアに最も近い職員を選択（医事能力を優先評価）
         chosen = min(
             remaining,
             key=lambda e: abs(calculate_skill_score(e, time_slot) - per_person_target),
@@ -145,7 +158,11 @@ def _select_by_balance(
     work_count: Dict[int, int],
     time_slot: TimeSlot,
 ) -> List[Employee]:
-    """Select employees balancing both work count and skill score."""
+    """勤務回数とスキル能力のバランスを考慮した選択アルゴリズム。
+    
+    最小勤務回数の職員の中から、スキル能力の平均化を考慮して選択する。
+    特に受付業務では医事能力（保険登録、会計など）を優先評価する。
+    """
     selected: List[Employee] = []
     remaining = list(candidates)
     
@@ -153,11 +170,11 @@ def _select_by_balance(
         if not remaining:
             break
         
-        # First filter by minimum work count
+        # 最小勤務回数の職員を抽出
         min_work = min(work_count[e.id] for e in remaining)
         pool = [e for e in remaining if work_count[e.id] == min_work]
         
-        # Then select by skill balance
+        # その中からスキルバランスが良い職員を選択（能力の平均化）
         target = time_slot.target_skill_score or (time_slot.required_staff * 150)
         current_score = sum(calculate_skill_score(e, time_slot) for e in selected)
         remaining_slots = max(1, count - len(selected))
@@ -495,6 +512,12 @@ def generate_shifts(
 
 
 def calculate_skill_balance(shifts: Sequence[GeneratedShift], time_slots: Sequence[TimeSlot]) -> Dict[str, float]:
+    """スキルバランスの統計を計算する。
+    
+    各時間帯のスキル合計を計算し、その平均値と標準偏差を算出する。
+    標準偏差が小さいほど、日によるスキル能力の偏りが少なく、
+    安定したサービス品質が提供できることを示す。
+    """
     if not shifts:
         return {"avg_skill": 0.0, "std_skill": 0.0, "min_skill": 0.0, "max_skill": 0.0}
 

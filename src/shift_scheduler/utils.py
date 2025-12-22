@@ -68,20 +68,60 @@ def get_weekday_jp(date_str: str) -> str:
 
 
 def export_to_excel(shifts: Sequence[dict], filepath: str) -> bool:
+    """シフトデータをExcel形式でエクスポートする。
+    
+    勤務形態、各スキルスコア詳細、休憩時間を含む。
+    """
     try:
         if not shifts:
             return False
         df = pd.DataFrame(shifts)
+        
+        # 職員情報とスキル詳細を展開
+        df['employment_pattern'] = df['employee'].apply(
+            lambda e: e.get('employment_pattern_id', '') if isinstance(e, dict) else ''
+        )
+        df['skill_reha'] = df['employee'].apply(
+            lambda e: e.get('skill_reha', 0) if isinstance(e, dict) else 0
+        )
+        df['skill_reception_am'] = df['employee'].apply(
+            lambda e: e.get('skill_reception_am', 0) if isinstance(e, dict) else 0
+        )
+        df['skill_reception_pm'] = df['employee'].apply(
+            lambda e: e.get('skill_reception_pm', 0) if isinstance(e, dict) else 0
+        )
+        df['skill_general'] = df['employee'].apply(
+            lambda e: e.get('skill_general', 0) if isinstance(e, dict) else 0
+        )
+        
+        # エクスポート用カラムを選択
         columns = [
             "date",
             "time_slot_name",
             "start_time",
             "end_time",
             "employee_name",
+            "employment_pattern",
+            "skill_reha",
+            "skill_reception_am",
+            "skill_reception_pm",
+            "skill_general",
             "skill_score",
         ]
         df = df[columns]
-        df.columns = ["日付", "時間帯", "開始時刻", "終了時刻", "職員名", "スキル"]
+        df.columns = [
+            "日付",
+            "時間帯",
+            "開始時刻",
+            "終了時刻",
+            "職員名",
+            "勤務形態",
+            "リハ室スキル",
+            "受付午前スキル",
+            "受付午後スキル",
+            "総合対応力",
+            "スキルスコア",
+        ]
         df.to_excel(filepath, index=False, engine="openpyxl")
         return True
     except Exception:

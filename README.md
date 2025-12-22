@@ -1,4 +1,4 @@
-# シフト管理システム V3.0
+# シフト管理システム
 
 小規模施設（5〜10名程度）向けの高度な自動シフト最適化システムです。
 
@@ -45,7 +45,7 @@ streamlit run main.py
 | ☕ 休憩管理 | 自動休憩時間割り当てと窓口カバレッジ検証 |
 | 📋 シフト表示 | カレンダー表示、休憩時間、統計分析、Excel出力 |
 
-## V3.0 業務エリア
+## 業務エリア
 
 ### リハ室（終日運営）
 
@@ -61,7 +61,7 @@ streamlit run main.py
 - **配置可能**: TYPE_A, TYPE_B
 - **スキル評価**: 受付スキル（午前/午後） + 総合対応力
 
-## 診療スケジュール（V3.0固定）
+## 診療スケジュール（固定）
 
 | 曜日 | 午前診療 | 午後診療 |
 |-----|------|------|
@@ -73,7 +73,7 @@ streamlit run main.py
 | 土 | 09:00-13:30 | 休診 |
 | 日 | 休診 | 休診 |
 
-## V3.0 勤務形態マスタ
+## 勤務形態マスタ
 
 | 勤務形態 | 勤務時間 | 午後勤務 | 対象 |
 |---------|---------|---------|------|
@@ -134,20 +134,21 @@ shift-scheduler/
 ├── requirements.txt        # Python依存関係
 ├── README.md               # このファイル
 ├── src/                    # ソースコード
-│   ├── database.py         # データベース操作（V3.0完全版）
-│   ├── optimizer.py        # シフト最適化エンジン
-│   ├── availability_checker.py  # 勤務可否判定
-│   ├── break_scheduler.py  # 休憩時間自動割り当て
-│   └── utils.py            # ユーティリティ関数
+│   └── shift_scheduler/    # コアドメイン実装
+│       ├── database.py     # データベース操作
+│       ├── optimizer.py    # シフト最適化エンジン
+│       ├── availability.py # 勤務可否判定
+│       ├── breaks.py       # 休憩時間自動割り当て
+│       └── utils.py        # ユーティリティ関数
 ├── pages/                  # Streamlitページ
 │   ├── 1_👥_職員管理.py    # 職員管理（勤務形態選択）
 │   ├── 2_🏖️_休暇管理.py    # 休暇管理（日付単位休暇登録）
 │   ├── 3_🎯_シフト生成.py   # シフト生成（最適化モード選択）
 │   └── 4_📋_シフト表示.py   # シフト表示（休憩時間表示）
 ├── docs/                   # ドキュメント
-│   ├── REQUIREMENTS.md     # 要求事項定義書（V3.0統合版）
-│   ├── ARCHITECTURE.md     # システム設計書（V3.0対応）
-│   └── USER_GUIDE.md       # 利用ガイド（V3.0対応）
+│   ├── REQUIREMENTS.md     # 要求事項定義書
+│   ├── ARCHITECTURE.md     # システム設計書
+│   └── USER_GUIDE.md       # 利用ガイド
 ├── scripts/                # ユーティリティスクリプト
 │   ├── run.bat             # 起動用バッチファイル（Windows）
 │   ├── reset_db.bat        # データベースリセット（Windows）
@@ -155,9 +156,11 @@ shift-scheduler/
 │   ├── launcher.py         # PyInstaller用ランチャー
 │   └── build.spec          # PyInstallerビルド設定
 ├── tests/                  # テストファイル
-│   ├── test_availability_v3.py  # 勤務可否テスト
-│   ├── test_break_scheduler.py  # 休憩スケジューラーテスト
-│   └── test_generate.py    # シフト生成テスト
+│   ├── test_availability.py      # 勤務可否テスト
+│   ├── test_availability_module.py
+│   ├── test_breaks_module.py     # 休憩スケジューラーテスト
+│   ├── test_break_scheduler.py   # 休憩スケジューラーテスト（互換）
+│   └── test_optimizer.py         # 最適化テスト
 ├── data/                   # データベース（自動生成）
 │   └── shift.db            # SQLiteデータベース
 └── build/                  # ビルド成果物
@@ -165,9 +168,9 @@ shift-scheduler/
 
 ## ドキュメント
 
-- **[要求事項定義書](docs/REQUIREMENTS.md)**: システムの詳細仕様（V3.0最新版）
-- **[システム設計書](docs/ARCHITECTURE.md)**: アーキテクチャと設計思想（V3.0対応）
-- **[利用ガイド](docs/USER_GUIDE.md)**: 詳細な操作方法（V3.0対応）
+- **[要求事項定義書](docs/REQUIREMENTS.md)**: システムの詳細仕様
+- **[システム設計書](docs/ARCHITECTURE.md)**: アーキテクチャと設計思想
+- **[利用ガイド](docs/USER_GUIDE.md)**: 詳細な操作方法
 
 ## 実行可能ファイルのビルド
 
@@ -201,5 +204,5 @@ Copy-Item data/shift.db "shift_backup_$(Get-Date -Format 'yyyyMMdd').db"
 
 ---
 
-**Version**: 3.0.0  
-**最終更新日**: 2025年11月28日
+**Version**: 0.0.3（開発中・未リリース・修正3回）  
+**最終更新日**: 2025年12月22日

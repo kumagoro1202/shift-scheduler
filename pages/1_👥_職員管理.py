@@ -28,9 +28,11 @@ st.markdown("---")
 # 職員タイプのラベル辞書
 EMPLOYEE_TYPE_LABELS = {
     "TYPE_A": "🌟 TYPE_A (リハ室・受付両方可能)",
-    "TYPE_B": "📋 TYPE_B (受付のみ)",
-    "TYPE_C": "💪 TYPE_C (リハ室のみ・正職員)",
-    "TYPE_D": "🏃 TYPE_D (リハ室のみ・パート)"
+    "TYPE_B": "📋 TYPE_B (受付専任)",
+    "TYPE_C": "💪 TYPE_C (リハ室専任・正職員)",
+    "TYPE_D": "🏃 TYPE_D (リハ室専任・パート)",
+    "TYPE_E": "📝 TYPE_E (受付専任・パート)",
+    "TYPE_F": "⏰ TYPE_F (受付専任・時短)"
 }
 
 PATTERN_CATEGORY_LABELS = {
@@ -86,9 +88,11 @@ with tab1:
             # 職員タイプフィルター（日本語表示用のマッピング）
             EMPLOYEE_TYPE_FILTER_LABELS = {
                 "TYPE_A": "リハ室・受付両方可能",
-                "TYPE_B": "受付のみ",
-                "TYPE_C": "リハ室のみ(正職員)",
-                "TYPE_D": "リハ室のみ(パート)"
+                "TYPE_B": "受付専任",
+                "TYPE_C": "リハ室専任(正職員)",
+                "TYPE_D": "リハ室専任(パート)",
+                "TYPE_E": "受付専任(パート)",
+                "TYPE_F": "受付専任(時短)"
             }
             all_employee_types_codes = ["全て"] + sorted(list(set([e['employee_type'] for e in employee_data])))
             all_employee_types_labels = ["全て"] + [EMPLOYEE_TYPE_FILTER_LABELS.get(code, code) for code in all_employee_types_codes[1:]]
@@ -169,12 +173,14 @@ with tab1:
                         
                         # 職員タイプ
                         with form_cols[1]:
-                            type_options = ["TYPE_A", "TYPE_B", "TYPE_C", "TYPE_D"]
+                            type_options = ["TYPE_A", "TYPE_B", "TYPE_C", "TYPE_D", "TYPE_E", "TYPE_F"]
                             type_labels_short = {
                                 "TYPE_A": "リハ室・受付両方",
-                                "TYPE_B": "受付のみ",
-                                "TYPE_C": "リハ室のみ(正)",
-                                "TYPE_D": "リハ室のみ(パ)"
+                                "TYPE_B": "受付専任",
+                                "TYPE_C": "リハ室専任(正)",
+                                "TYPE_D": "リハ室専任(パ)",
+                                "TYPE_E": "受付専任(パ)",
+                                "TYPE_F": "受付専任(時短)"
                             }
                             current_type_idx = type_options.index(emp_data['employee_type'])
                             edit_type = st.selectbox("タイプ", type_options, index=current_type_idx, 
@@ -211,7 +217,7 @@ with tab1:
                         # スキルスコア
                         with form_cols[4]:
                             edit_reha = st.number_input("リハ室", 0, 100, emp_data['skill_reha'], 
-                                                       disabled=(edit_type == "TYPE_B"),
+                                                       disabled=(edit_type in ["TYPE_B", "TYPE_E", "TYPE_F"]),
                                                        label_visibility="collapsed", key=f"reha_{emp_data['id']}")
                         with form_cols[5]:
                             edit_am = st.number_input("受付AM", 0, 100, emp_data['skill_reception_am'],
@@ -244,7 +250,7 @@ with tab1:
                                     'employee_type': edit_type,
                                     'employment_type': edit_employment,
                                     'employment_pattern_id': edit_pattern_id,
-                                    'skill_reha': edit_reha if edit_type != "TYPE_B" else 0,
+                                    'skill_reha': edit_reha if edit_type not in ["TYPE_B", "TYPE_E", "TYPE_F"] else 0,
                                     'skill_reception_am': edit_am if edit_type not in ["TYPE_C", "TYPE_D"] else 0,
                                     'skill_reception_pm': edit_pm if edit_type not in ["TYPE_C", "TYPE_D"] else 0,
                                     'skill_general': edit_general
@@ -266,9 +272,11 @@ with tab1:
                     # 職員タイプを日本語表示に変換
                     employee_type_labels_short = {
                         "TYPE_A": "リハ室・受付両方",
-                        "TYPE_B": "受付のみ",
-                        "TYPE_C": "リハ室のみ(正)",
-                        "TYPE_D": "リハ室のみ(パ)"
+                        "TYPE_B": "受付専任",
+                        "TYPE_C": "リハ室専任(正)",
+                        "TYPE_D": "リハ室専任(パ)",
+                        "TYPE_E": "受付専任(パ)",
+                        "TYPE_F": "受付専任(時短)"
                     }
                     employee_type_display = employee_type_labels_short.get(emp_data['employee_type'], emp_data['employee_type'])
                     
@@ -344,7 +352,7 @@ with st.form("employee_form"):
     with col2:
         employee_type = st.selectbox(
             "職員タイプ *",
-            ["TYPE_A", "TYPE_B", "TYPE_C", "TYPE_D"],
+            ["TYPE_A", "TYPE_B", "TYPE_C", "TYPE_D", "TYPE_E", "TYPE_F"],
             index=0,
             format_func=lambda x: EMPLOYEE_TYPE_LABELS[x],
         )
@@ -393,27 +401,27 @@ with st.form("employee_form"):
             min_value=0,
             max_value=100,
             value=0,
-            disabled=(employee_type == "TYPE_B"),
-            help="TYPE_Bは受付専門のため入力不可",
+            disabled=(employee_type in ["TYPE_B", "TYPE_E", "TYPE_F"]),
+            help="TYPE_B, TYPE_E, TYPE_Fは受付専任のため入力不可",
         )
 
         skill_am = st.number_input(
-            "受付午前スキル",
+            "受付午前スキル（医事業務能力を優先）",
             min_value=0,
             max_value=100,
             value=0,
             disabled=(employee_type in ["TYPE_C", "TYPE_D"]),
-            help="TYPE_C, TYPE_Dはリハ室専門のため入力不可",
+            help="TYPE_C, TYPE_Dはリハ室専任のため入力不可",
         )
 
     with col_s2:
         skill_pm = st.number_input(
-            "受付午後スキル",
+            "受付午後スキル（医事業務能力を優先）",
             min_value=0,
             max_value=100,
             value=0,
             disabled=(employee_type in ["TYPE_C", "TYPE_D"]),
-            help="TYPE_C, TYPE_Dはリハ室専門のため入力不可",
+            help="TYPE_C, TYPE_Dはリハ室専任のため入力不可",
         )
 
         skill_flex = st.number_input(
@@ -468,17 +476,25 @@ with st.sidebar:
         - 最も柔軟な配置が可能
         - すべてのスキル項目を入力
         
-        **TYPE_B**: 受付のみ
+        **TYPE_B**: 受付専任
         - 受付業務専門
         - 受付スキルのみ入力
         
-        **TYPE_C**: リハ室のみ（正職員）
+        **TYPE_C**: リハ室専任（正職員）
         - リハビリ業務専門
         - リハ室スキルのみ入力
         
-        **TYPE_D**: リハ室のみ（パート）
+        **TYPE_D**: リハ室専任（パート）
         - パート職員でリハ業務
         - リハ室スキルのみ入力
+        
+        **TYPE_E**: 受付専任（パート）
+        - パート職員で受付業務専門
+        - 受付スキルのみ入力
+        
+        **TYPE_F**: 受付専任（時短）
+        - 時短勤務で受付業務専門
+        - 受付スキルのみ入力
         """)
     
     with st.expander("スキルスコアについて"):
@@ -490,6 +506,7 @@ with st.sidebar:
         
         **受付午前/午後スキル**:
         - 受付業務の能力（時間帯別）
+        - 医事業務能力を優先して評価
         
         **総合対応力**:
         - 柔軟性や総合的な業務対応力
