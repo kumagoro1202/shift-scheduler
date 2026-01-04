@@ -60,8 +60,17 @@ with tab1:
         employee_data = []
         for emp in employees:
             pattern = PATTERN_LOOKUP.get(emp.employment_pattern_id)
-            pattern_name = pattern.name if pattern else "未設定"
-            pattern_time = f"{pattern.start_time}-{pattern.end_time}" if pattern else "-"
+            # is_pattern_fixedがない場合は後方互換性のためFalseとして扱う
+            is_fixed = getattr(emp, 'is_pattern_fixed', False)
+            
+            # 正職員（通常）で変動割り当ての場合
+            if not is_fixed:
+                pattern_name = "変動割り当て"
+                pattern_time = "早番・中番・遅番"
+            else:
+                pattern_name = pattern.name if pattern else "未設定"
+                pattern_time = f"{pattern.start_time}-{pattern.end_time}" if pattern else "-"
+            
             pattern_category = pattern.category if pattern else "unknown"
             total_skill = emp.skill_reha + emp.skill_reception_am + emp.skill_reception_pm + emp.skill_general
             
@@ -74,6 +83,7 @@ with tab1:
                 'pattern_time': pattern_time,
                 'pattern_id': emp.employment_pattern_id or '',
                 'pattern_category': pattern_category,
+                'is_pattern_fixed': is_fixed,
                 'skill_reha': emp.skill_reha,
                 'skill_reception_am': emp.skill_reception_am,
                 'skill_reception_pm': emp.skill_reception_pm,
@@ -150,8 +160,8 @@ with tab1:
             
             # 表形式で一覧表示
             # ヘッダー
-            header_cols = st.columns([2, 2, 2, 2, 1, 1, 1, 1, 1, 1.5])
-            headers = ["名前", "職員タイプ", "雇用形態", "勤務パターン", "リハ室", "受付AM", "受付PM", "総合", "合計", "操作"]
+            header_cols = st.columns([2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1.5])
+            headers = ["名前", "職員タイプ", "雇用形態", "勤務パターン", "固定", "リハ室", "受付AM", "受付PM", "総合", "合計", "操作"]
             for col, header in zip(header_cols, headers):
                 col.markdown(f"**{header}**")
             
@@ -165,7 +175,7 @@ with tab1:
                 if is_editing:
                     # 編集モード：フォームで表示
                     with st.form(key=f"edit_form_{emp_data['id']}"):
-                        form_cols = st.columns([2, 2, 2, 2, 1, 1, 1, 1, 1, 1.5])
+                        form_cols = st.columns([2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1.5])
                         
                         # 名前
                         with form_cols[0]:
@@ -200,8 +210,11 @@ with tab1:
                                 pattern_category = st.session_state.get(f"pattern_cat_{emp_data['id']}", emp_data['pattern_category'])
                                 if pattern_category not in ["full_time", "short_time"]:
                                     pattern_category = "full_time"
+                                # 時短勤務の場合は固定、それ以外は変動
+                                edit_is_fixed = (pattern_category == "short_time")
                             else:
                                 pattern_category = "part_time"
+                                edit_is_fixed = True  # パートは固定
                             
                             pattern_candidates = [p for p in EMPLOYMENT_PATTERNS if p.category == pattern_category]
                             if pattern_candidates:
@@ -214,29 +227,35 @@ with tab1:
                                 st.caption("パターンなし")
                                 edit_pattern_id = None
                         
-                        # スキルスコア
+                        # パターン固定
                         with form_cols[4]:
+                            fixed_icon = "📌" if edit_is_fixed else "🔄"
+                            fixed_text = "固定" if edit_is_fixed else "変動"
+                            st.markdown(f"{fixed_icon}{fixed_text}")
+                        
+                        # スキルスコア
+                        with form_cols[5]:
                             edit_reha = st.number_input("リハ室", 0, 100, emp_data['skill_reha'], 
                                                        disabled=(edit_type in ["TYPE_B", "TYPE_E", "TYPE_F"]),
                                                        label_visibility="collapsed", key=f"reha_{emp_data['id']}")
-                        with form_cols[5]:
+                        with form_cols[6]:
                             edit_am = st.number_input("受付AM", 0, 100, emp_data['skill_reception_am'],
                                                      disabled=(edit_type in ["TYPE_C", "TYPE_D"]),
                                                      label_visibility="collapsed", key=f"am_{emp_data['id']}")
-                        with form_cols[6]:
+                        with form_cols[7]:
                             edit_pm = st.number_input("受付PM", 0, 100, emp_data['skill_reception_pm'],
                                                      disabled=(edit_type in ["TYPE_C", "TYPE_D"]),
                                                      label_visibility="collapsed", key=f"pm_{emp_data['id']}")
-                        with form_cols[7]:
+                        with form_cols[8]:
                             edit_general = st.number_input("総合", 0, 100, emp_data['skill_general'],
                                                           label_visibility="collapsed", key=f"general_{emp_data['id']}")
                         
-                        with form_cols[8]:
+                        with form_cols[9]:
                             total = edit_reha + edit_am + edit_pm + edit_general
                             st.markdown(f"**{total}**")
                         
                         # 保存・キャンセルボタン
-                        with form_cols[9]:
+                        with form_cols[10]:
                             btn_col1, btn_col2 = st.columns(2)
                             with btn_col1:
                                 save_btn = st.form_submit_button("💾", help="保存")
@@ -250,6 +269,7 @@ with tab1:
                                     'employee_type': edit_type,
                                     'employment_type': edit_employment,
                                     'employment_pattern_id': edit_pattern_id,
+                                    'is_pattern_fixed': edit_is_fixed,
                                     'skill_reha': edit_reha if edit_type not in ["TYPE_B", "TYPE_E", "TYPE_F"] else 0,
                                     'skill_reception_am': edit_am if edit_type not in ["TYPE_C", "TYPE_D"] else 0,
                                     'skill_reception_pm': edit_pm if edit_type not in ["TYPE_C", "TYPE_D"] else 0,
@@ -267,7 +287,7 @@ with tab1:
                                 st.rerun()
                 else:
                     # 通常表示モード
-                    data_cols = st.columns([2, 2, 2, 2, 1, 1, 1, 1, 1, 1.5])
+                    data_cols = st.columns([2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1.5])
                     
                     # 職員タイプを日本語表示に変換
                     employee_type_labels_short = {
@@ -280,17 +300,22 @@ with tab1:
                     }
                     employee_type_display = employee_type_labels_short.get(emp_data['employee_type'], emp_data['employee_type'])
                     
+                    # パターン固定アイコン
+                    fixed_icon = "📌" if emp_data['is_pattern_fixed'] else "🔄"
+                    fixed_text = "固定" if emp_data['is_pattern_fixed'] else "変動"
+                    
                     data_cols[0].markdown(emp_data['name'])
                     data_cols[1].markdown(employee_type_display)
                     data_cols[2].markdown(emp_data['employment_type'])
                     data_cols[3].markdown(f"{emp_data['pattern_name']}")
-                    data_cols[4].markdown(f"{emp_data['skill_reha']}")
-                    data_cols[5].markdown(f"{emp_data['skill_reception_am']}")
-                    data_cols[6].markdown(f"{emp_data['skill_reception_pm']}")
-                    data_cols[7].markdown(f"{emp_data['skill_general']}")
-                    data_cols[8].markdown(f"**{emp_data['total_skill']}**")
+                    data_cols[4].markdown(f"{fixed_icon}{fixed_text}")
+                    data_cols[5].markdown(f"{emp_data['skill_reha']}")
+                    data_cols[6].markdown(f"{emp_data['skill_reception_am']}")
+                    data_cols[7].markdown(f"{emp_data['skill_reception_pm']}")
+                    data_cols[8].markdown(f"{emp_data['skill_general']}")
+                    data_cols[9].markdown(f"**{emp_data['total_skill']}**")
                     
-                    with data_cols[9]:
+                    with data_cols[10]:
                         btn_col1, btn_col2 = st.columns(2)
                         with btn_col1:
                             if st.button("✏️", key=f"edit_{emp_data['id']}", help="編集"):
@@ -445,12 +470,20 @@ if submit_button:
     if not name.strip():
         st.error("❌ 職員名を入力してください")
     else:
+        # is_pattern_fixed の自動設定
+        # 正職員・フルタイムは変動、それ以外（時短・パート）は固定
+        if employment_type == "正職員" and pattern_category == "full_time":
+            is_pattern_fixed = False
+        else:
+            is_pattern_fixed = True
+        
         # 職員情報を登録
         update_params = {
             'name': name.strip(),
             'employee_type': employee_type,
             'employment_type': employment_type,
             'employment_pattern_id': employment_pattern_id,
+            'is_pattern_fixed': is_pattern_fixed,
             'skill_reha': skill_reha,
             'skill_reception_am': skill_am,
             'skill_reception_pm': skill_pm,
@@ -519,6 +552,12 @@ with st.sidebar:
         st.markdown("""
         勤務パターンは勤務時間や休憩時間を
         定義します。
+        
+        **パターン固定について**:
+        - 🔄 **変動**: 正職員（通常）は日によって
+          早番・中番・遅番を変動的に割り当て
+        - 📌 **固定**: パート職員・時短勤務職員は
+          登録されたパターンで固定
         
         雇用形態と勤務形態に応じて
         選択可能なパターンが表示されます。

@@ -199,13 +199,13 @@ optimization_mode = st.selectbox(
     options=["balance", "skill", "days"],
     format_func=lambda x: {
         "balance": "⚖️ バランス（勤務回数とスキルの両方を考慮）",
-        "skill": "🎯 スキル重視（スキル能力の平均化を優先）",
+        "skill": "🎯 スキル重視（目標スキルスコアに近づける）",
         "days": "📅 日数重視（勤務回数の均等化を優先）"
     }[x],
     index=0,
     help="""
     **バランス**: 勤務回数とスキル能力の両方を考慮して最適化します（推奨）
-    **スキル重視**: 各時間帯のスキル能力を平均化し、日によるサービス品質の偏りを防止します
+    **スキル重視**: 各時間帯のスキル能力を平均化し、日によるサービス品質の偏りを防止します。受付では医事能力（保険登録、会計など）を優先します
     **日数重視**: 職員の勤務回数をできるだけ均等にすることを優先します
     """
 )
@@ -272,25 +272,27 @@ with col_btn1:
                                 st.write("例: " + ", ".join(summary.examples))
                 st.stop()
             else:
-                shift_payloads = [shift.to_dict() for shift in result_shifts]
-
                 # データベースに保存
                 success_count = 0
                 failed_count = 0
                 error_messages = []
 
-                for payload in shift_payloads:
+                for shift in result_shifts:
+                    # 勤務パターンIDを取得（正職員は日ごとに変動、パート・時短は固定）
+                    pattern_id = shift.employee.employment_pattern_id if shift.employee else None
+                    
                     shift_id = create_shift(
-                        payload["date"],
-                        payload["time_slot_id"],
-                        payload["employee_id"],
+                        shift.date,
+                        shift.time_slot_id,
+                        shift.employee_id,
+                        pattern_id,
                     )
                     if shift_id:
                         success_count += 1
                     else:
                         failed_count += 1
                         error_messages.append(
-                            f"{payload['date']} {payload['time_slot_name']} - {payload['employee_name']}"
+                            f"{shift.date} {shift.time_slot_name} - {shift.employee_name}"
                         )
 
                 if failed_count > 0:
@@ -381,6 +383,7 @@ with st.sidebar:
         
         **🎯 スキル重視**:
         - 各時間帯のスキル能力を平均化
+        - 目標スキルスコアに近づける
         - 日によるサービス品質の偏りを防止
         - 受付では医事能力（保険登録、会計など）を優先
         
@@ -402,10 +405,17 @@ with st.sidebar:
         - TYPE_B: 受付のみ
         - TYPE_C: リハ室のみ（正職員）
         - TYPE_D: リハ室のみ（パート）
+        - TYPE_E: 受付のみ（パート）
+        - TYPE_F: 受付のみ（時短）
         
-        **重み付き最適化**:
-        - 時間帯ごとに重要度を設定可能
-        - 目標スキルスコアに基づく最適化
+        **勤務パターン選択**:
+        - 正職員（通常）: 日によって早番・中番・遅番を変動割り当て
+        - パート・時短職員: 登録されたパターンで固定
+        
+        **スキル能力の平均化**:
+        - 各時間帯の配置職員のスキル能力を均等化
+        - 日によるサービス品質の偏りを防止
+        - 受付では医事能力を優先評価
         """)
     
     with st.expander("シフト生成について"):
@@ -442,15 +452,19 @@ with st.sidebar:
     with st.expander("最適化の仕組み"):
         st.markdown("""
         **目標:**
-        各時間帯のスキル能力を平均化し、
-        日によるサービス品質の偏りを防止
+        - スキル能力の平均化（各時間帯の職員スキルを均等化）
+        - 医事能力の優先（受付業務で保険登録・会計能力を重視）
+        - 勤務回数の均等化（特定職員への負担集中を防止）
+        - 勤務パターンの変動割り当て（正職員は日ごとに早番・中番・遅番を選択）
         
         **制約:**
-        - 必要人数を満たす
+        - 必要人数を満たす（受付: 午前4-5名/午後3名、リハ室: 2名）
         - 勤務可能時間のみ
         - 終日勤務の原則（半休以外は午前・午後両方）
+        - 職員タイプ制約（配置可能エリアの制限）
         
         **結果:**
-        どの時間帯も同程度の
-        スキル能力になる
+        - 各時間帯で安定したサービス品質
+        - 職員の公平な勤務配分
+        - 受付では医事能力の高い職員を優先配置
         """)
