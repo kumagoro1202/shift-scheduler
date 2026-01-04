@@ -56,6 +56,7 @@ if prev_clicked:
         st.session_state.display_year -= 1
     else:
         st.session_state.display_month -= 1
+    st.rerun()
 
 # 次月ボタンの処理
 next_clicked = col_arrow2.button("▶", key="next_month_display")
@@ -65,38 +66,36 @@ if next_clicked:
         st.session_state.display_year += 1
     else:
         st.session_state.display_month += 1
+    st.rerun()
 
 # 年のselectbox
 with col_date1:
     year_options = list(range(datetime.now().year - 1, datetime.now().year + 3))
-    if st.session_state.display_year in year_options:
-        year_index = year_options.index(st.session_state.display_year)
-    else:
-        year_index = 0
+    year_index = year_options.index(st.session_state.display_year) if st.session_state.display_year in year_options else 0
     
-    def on_year_change_display():
-        st.session_state.display_year = st.session_state.year_select_display
-    
-    st.selectbox(
+    selected_year = st.selectbox(
         "年",
         options=year_options,
         index=year_index,
-        key="year_select_display",
-        on_change=on_year_change_display
+        key=f"year_select_display_{st.session_state.display_year}_{st.session_state.display_month}"
     )
+    
+    if selected_year != st.session_state.display_year:
+        st.session_state.display_year = selected_year
+        st.rerun()
 
 # 月のselectbox
 with col_date2:
-    def on_month_change_display():
-        st.session_state.display_month = st.session_state.month_select_display
-    
-    st.selectbox(
+    selected_month = st.selectbox(
         "月",
         options=list(range(1, 13)),
         index=st.session_state.display_month - 1,
-        key="month_select_display",
-        on_change=on_month_change_display
+        key=f"month_select_display_{st.session_state.display_year}_{st.session_state.display_month}"
     )
+    
+    if selected_month != st.session_state.display_month:
+        st.session_state.display_month = selected_month
+        st.rerun()
 
 # プルダウンの値をセッション状態に反映
 year = st.session_state.display_year
@@ -221,6 +220,24 @@ with tab1:
         with header_cols[idx]:
             st.markdown(f"**{day_name}**")
     
+    # カレンダーのカスタムCSS（要素間の余白を削除）
+    st.markdown("""
+        <style>
+        .stMarkdown {
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="column"] > div {
+            gap: 0 !important;
+        }
+        div[data-testid="column"] > div > div {
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     # カレンダー本体
     for week_idx, week in enumerate(weeks):
         cols = st.columns(7)
@@ -256,19 +273,17 @@ with tab1:
                     bg_color = "#868e96"
                     text_color = "white"
                 
-                # 日付ヘッダーを表示
-                st.markdown(f"""
-                    <div style="background-color: {bg_color}; padding: 5px; border-radius: 5px 5px 0 0; text-align: center;">
-                        <div style="font-size: 16px; font-weight: bold; color: {text_color};">{day}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                # シフト情報を表示
+                # 日付ヘッダーとシフト情報を表示
                 if is_sunday:
                     st.markdown(f"""
-                        <div style="background-color: {bg_color}; padding: 10px; border-radius: 0 0 5px 5px; text-align: center; min-height: 100px;">
-                            <div style="font-size: 20px; color: {text_color};">🌙</div>
-                            <div style="font-size: 12px; color: {text_color};">定休</div>
+                        <div style="background-color: {bg_color}; border-radius: 5px; overflow: hidden;">
+                            <div style="padding: 8px 10px; text-align: center;">
+                                <div style="font-size: 18px; font-weight: bold; color: {text_color}; line-height: 1.5;">{day}</div>
+                            </div>
+                            <div style="padding: 5px; text-align: center; min-height: 60px;">
+                                <div style="font-size: 20px; color: {text_color};">🌙</div>
+                                <div style="font-size: 12px; color: {text_color};">定休</div>
+                            </div>
                         </div>
                     """, unsafe_allow_html=True)
                 elif len(day_shifts) > 0:
@@ -282,9 +297,17 @@ with tab1:
                     # エリアごとにグループ化
                     area_groups = day_shifts_copy.groupby('area')
                     
+                    # 日付ヘッダーを含めた全体のコンテナ
+                    st.markdown(f"""
+                        <div style="border-radius: 5px; overflow: hidden;">
+                            <div style="background-color: {bg_color}; padding: 8px 10px; text-align: center;">
+                                <div style="font-size: 18px; font-weight: bold; color: {text_color}; line-height: 1.5;">{day}</div>
+                            </div>
+                    """, unsafe_allow_html=True)
+                    
                     with st.container():
                         st.markdown(f"""
-                            <div style="background-color: white; padding: 5px; border: 1px solid #dee2e6; border-radius: 0 0 5px 5px; min-height: 100px;">
+                            <div style="background-color: white; padding: 2px; border: 1px solid #dee2e6; border-top: none; min-height: 60px;">
                         """, unsafe_allow_html=True)
                         
                         for area_name, area_shifts in area_groups:
@@ -325,12 +348,17 @@ with tab1:
                         st.metric("シフト数", f"{shift_count}件")
                         st.metric("平均スキル", f"{avg_skill:.1f}")
                         
-                        st.markdown("</div>", unsafe_allow_html=True)
+                        st.markdown("</div></div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"""
-                        <div style="background-color: {bg_color}; padding: 10px; border-radius: 0 0 5px 5px; text-align: center; min-height: 100px;">
-                            <div style="font-size: 20px; color: {text_color};">📭</div>
-                            <div style="font-size: 12px; color: {text_color};">シフトなし</div>
+                        <div style="background-color: {bg_color}; border-radius: 5px; overflow: hidden;">
+                            <div style="padding: 8px 10px; text-align: center;">
+                                <div style="font-size: 18px; font-weight: bold; color: {text_color}; line-height: 1.5;">{day}</div>
+                            </div>
+                            <div style="padding: 5px; text-align: center; min-height: 60px;">
+                                <div style="font-size: 20px; color: {text_color};">📭</div>
+                                <div style="font-size: 12px; color: {text_color};">シフトなし</div>
+                            </div>
                         </div>
                     """, unsafe_allow_html=True)
 
