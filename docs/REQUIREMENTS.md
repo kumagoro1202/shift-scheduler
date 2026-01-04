@@ -1,7 +1,7 @@
 # シフト作成システム 要求事項定義書
 
-**現行バージョン**: 0.0.3  
-**最終更新日**: 2025年12月22日
+**現行バージョン**: 0.0.4  
+**最終更新日**: 2026年1月4日
 
 ---
 
@@ -95,6 +95,26 @@
 **注**: 受付業務では医事業務（保険登録、会計など）の能力を優先して評価します。
 
 ### 3.3 勤務形態
+
+#### 勤務パターンの割り当て方針
+
+**重要**: システムは以下の方針で勤務パターンを割り当てます。
+
+| 職員分類 | 勤務パターンの割り当て方法 |
+|---------|---------------------------|
+| 正職員 | **変動割り当て**: 日によって早番・中番・遅番を変えて割り当て |
+| パート職員 | **固定割り当て**: 登録された勤務形態で固定 |
+| 時短勤務職員 | **固定割り当て**: 登録された勤務形態で固定 |
+
+**正職員の勤務パターン変動**:
+- 月火金: A（早出）、B（通常）、C（遅出）のいずれかを日ごとに割り当て
+- 水曜日: ◯（早出）、通常、△（遅出）のいずれかを日ごとに割り当て
+- 木土: 1（早出）、2（通常）、3（遅出）のいずれかを日ごとに割り当て
+- 最適化アルゴリズムが各正職員の負担とスキルバランスを考慮して自動割り当て
+
+**パート・時短勤務職員**:
+- 登録された勤務形態(PA、P3、時短パターンなど)で固定
+- 勤務日は最適化で決定されるが、勤務する場合のパターンは常に同じ
 
 #### 正職員の勤務パターン
 
@@ -327,12 +347,17 @@
 - **休憩時間の管理**: 
   - 正職員は基本的に2時間連続で休憩を取得
   - 忙しい日は分割することもあり（当日の判断）
+- **正職員の勤務パターン選択**: 
+  - 正職員には日ごとに早番・中番・遅番のいずれかを割り当て
+  - 同一職員が連続して同じパターンに固定されないよう配慮
+  - パート職員と時短勤務職員は登録された勤務形態で固定
 
 #### ソフト制約（可能な限り守る）
 
 - 連続勤務日数の制限
 - 週末勤務の配分
 - スキルスコアのバランス
+- **正職員の勤務パターンの多様性**: 同一職員が特定のパターン（早番/中番/遅番）に偏らないよう配慮
 
 ---
 
@@ -348,7 +373,8 @@ CREATE TABLE employees (
     name TEXT NOT NULL,
     employee_type TEXT CHECK(employee_type IN ('TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D', 'TYPE_E', 'TYPE_F')),
     employment_type TEXT CHECK(employment_type IN ('正職員', 'パート')),
-    employment_pattern_id TEXT REFERENCES employment_patterns(id),
+    employment_pattern_id TEXT REFERENCES employment_patterns(id),  -- パート職員用：固定パターン
+    is_pattern_fixed BOOLEAN DEFAULT 0,  -- TRUE: パターン固定, FALSE: 変動割り当て（正職員）
     skill_reha INTEGER DEFAULT 50,
     skill_reception_am INTEGER DEFAULT 50,
     skill_reception_pm INTEGER DEFAULT 50,
@@ -423,7 +449,7 @@ CREATE TABLE shifts (
     employee_id INTEGER NOT NULL,
     shift_date DATE NOT NULL,
     time_slot_id TEXT NOT NULL,
-    employment_pattern_id TEXT,                -- その日の勤務形態
+    employment_pattern_id TEXT,                -- その日の勤務形態（正職員は日ごとに変動）
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (employee_id) REFERENCES employees(id),
     FOREIGN KEY (time_slot_id) REFERENCES time_slots(id),
@@ -519,6 +545,8 @@ CREATE TABLE break_schedules (
 | 職員タイプ | 配置可能な業務エリアの分類（TYPE_A〜F） |
 | 勤務形態 | 正職員（A/B/C、◯/△など）、時短、パートなどの勤務タイプ |
 | 勤務パターン記号 | 勤務表での表記（A/B/C、◯/△、1/2/3、PA、P3など） |
+| 勤務パターン固定 | パート職員や特定職員は同じパターンで勤務 |
+| 勤務パターン変動 | 正職員は日によって早番・中番・遅番を変えて勤務 |
 | 休暇種別 | 終日休暇、午前休、午後休の区分 |
 | スキルスコア | 職員の業務能力を数値化したもの（0〜100点） |
 | 医事能力 | 保険登録、会計などの事務能力（受付業務で優先） |
@@ -682,6 +710,7 @@ CREATE TABLE break_schedules (
 ---
 
 **文書管理情報**
-- バージョン: 0.0.3
+- バージョン: 0.0.4
 - 作成日: 2025年11月28日
+- 最終更新日: 2026年1月4日
 - 対象システム: シフト作成システム
