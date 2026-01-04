@@ -57,6 +57,7 @@ if prev_clicked:
         st.session_state.vacation_year -= 1
     else:
         st.session_state.vacation_month -= 1
+    st.rerun()
 
 # 次月ボタンの処理
 next_clicked = col_arrow2.button("▶", key="next_month_vacation")
@@ -66,38 +67,36 @@ if next_clicked:
         st.session_state.vacation_year += 1
     else:
         st.session_state.vacation_month += 1
+    st.rerun()
 
 # 年のselectbox
 with col_date1:
     year_options = list(range(datetime.now().year - 1, datetime.now().year + 3))
-    if st.session_state.vacation_year in year_options:
-        year_index = year_options.index(st.session_state.vacation_year)
-    else:
-        year_index = 0
+    year_index = year_options.index(st.session_state.vacation_year) if st.session_state.vacation_year in year_options else 0
     
-    def on_year_change():
-        st.session_state.vacation_year = st.session_state.year_select_vacation
-    
-    st.selectbox(
+    selected_year = st.selectbox(
         "年",
         options=year_options,
         index=year_index,
-        key="year_select_vacation",
-        on_change=on_year_change
+        key=f"year_select_{st.session_state.vacation_year}_{st.session_state.vacation_month}"
     )
+    
+    if selected_year != st.session_state.vacation_year:
+        st.session_state.vacation_year = selected_year
+        st.rerun()
 
 # 月のselectbox
 with col_date2:
-    def on_month_change():
-        st.session_state.vacation_month = st.session_state.month_select_vacation
-    
-    st.selectbox(
+    selected_month = st.selectbox(
         "月",
         options=list(range(1, 13)),
         index=st.session_state.vacation_month - 1,
-        key="month_select_vacation",
-        on_change=on_month_change
+        key=f"month_select_{st.session_state.vacation_year}_{st.session_state.vacation_month}"
     )
+    
+    if selected_month != st.session_state.vacation_month:
+        st.session_state.vacation_month = selected_month
+        st.rerun()
 
 # プルダウンの値をセッション状態に反映
 year = st.session_state.vacation_year
