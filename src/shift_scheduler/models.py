@@ -37,6 +37,7 @@ class Employee:
     skill_reception_pm: int
     skill_general: int
     is_active: bool = True
+    is_pattern_fixed: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

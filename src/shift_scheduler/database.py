@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS employees (
     skill_reception_pm INTEGER DEFAULT 50 CHECK(skill_reception_pm BETWEEN 0 AND 100),
     skill_general INTEGER DEFAULT 50 CHECK(skill_general BETWEEN 0 AND 100),
     is_active BOOLEAN DEFAULT 1,
+    is_pattern_fixed BOOLEAN DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -264,6 +265,7 @@ CREATE TABLE IF NOT EXISTS shifts (
     date DATE NOT NULL,
     time_slot_id TEXT NOT NULL REFERENCES time_slots(id),
     employee_id INTEGER NOT NULL REFERENCES employees(id),
+    employment_pattern_id TEXT REFERENCES employment_patterns(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(date, time_slot_id, employee_id)
 );
@@ -312,6 +314,18 @@ def init_database() -> None:
 
     _seed_employment_patterns()
     _seed_time_slots()
+    _migrate_employee_table()
+
+
+def _migrate_employee_table() -> None:
+    """Add is_pattern_fixed column if it doesn't exist."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(employees)")
+        columns = [row["name"] for row in cur.fetchall()]
+        if "is_pattern_fixed" not in columns:
+            cur.execute("ALTER TABLE employees ADD COLUMN is_pattern_fixed BOOLEAN DEFAULT 0")
+            conn.commit()
 
 
 def _seed_employment_patterns() -> None:
@@ -430,6 +444,7 @@ def _row_to_employee(row: sqlite3.Row) -> Employee:
         skill_reception_pm=row["skill_reception_pm"],
         skill_general=row["skill_general"],
         is_active=bool(row["is_active"]),
+        is_pattern_fixed=bool(row["is_pattern_fixed"]) if "is_pattern_fixed" in row.keys() else False,
     )
 
 
@@ -513,6 +528,7 @@ def create_employee(
     skill_reception_am: int,
     skill_reception_pm: int,
     skill_general: int,
+    is_pattern_fixed: bool = False,
 ) -> int:
     with get_connection() as conn:
         cur = conn.cursor()
@@ -520,8 +536,9 @@ def create_employee(
             """
             INSERT INTO employees (
                 name, employee_type, employment_type, employment_pattern_id,
-                skill_reha, skill_reception_am, skill_reception_pm, skill_general
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                skill_reha, skill_reception_am, skill_reception_pm, skill_general,
+                is_pattern_fixed
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -532,6 +549,7 @@ def create_employee(
                 skill_reception_am,
                 skill_reception_pm,
                 skill_general,
+                is_pattern_fixed,
             ),
         )
         conn.commit()
@@ -742,13 +760,15 @@ def list_shifts(start_date: str, end_date: str) -> List[dict]:
     return result
 
 
-def create_shift(date: str, time_slot_id: str, employee_id: int) -> Optional[int]:
+def create_shift(
+    date: str, time_slot_id: str, employee_id: int, employment_pattern_id: Optional[str] = None
+) -> Optional[int]:
     try:
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO shifts (date, time_slot_id, employee_id) VALUES (?, ?, ?)",
-                (date, time_slot_id, employee_id),
+                "INSERT INTO shifts (date, time_slot_id, employee_id, employment_pattern_id) VALUES (?, ?, ?, ?)",
+                (date, time_slot_id, employee_id, employment_pattern_id),
             )
             conn.commit()
             return int(cur.lastrowid)
