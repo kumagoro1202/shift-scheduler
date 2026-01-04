@@ -1,12 +1,13 @@
 """Heuristic shift optimisation aligned with the V3.0 specification."""
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from .availability import describe_unavailability, is_employee_available
-from .models import Employee, GeneratedShift, TimeSlot
+from .models import Employee, EmploymentPattern, GeneratedShift, TimeSlot
 
 
 @dataclass
@@ -61,6 +62,73 @@ def check_time_overlap(slot_a: TimeSlot, slot_b: TimeSlot) -> bool:
         end_b += 24 * 60
 
     return not (end_a <= start_b or end_b <= start_a)
+
+
+def _get_available_patterns_for_day(date: str, employee: Employee) -> List[str]:
+    """指定日の曜日に応じて利用可能な勤務パターンIDのリストを返す
+    
+    Args:
+        date: YYYY-MM-DD形式の日付文字列
+        employee: 職員オブジェクト
+    
+    Returns:
+        利用可能な勤務パターンIDのリスト
+        
+    Note:
+        - 正職員でis_pattern_fixed=Falseの場合のみ複数パターンを返す
+        - それ以外は登録済みのemployment_pattern_idを返す
+    """
+    # パターン固定の場合は登録済みパターンを返す
+    if employee.is_pattern_fixed or not employee.employment_pattern_id:
+        return [employee.employment_pattern_id] if employee.employment_pattern_id else []
+    
+    # 曜日判定
+    date_obj = datetime.strptime(date, "%Y-%m-%d")
+    weekday = date_obj.weekday()  # 0=月, 1=火, 2=水, 3=木, 4=金, 5=土, 6=日
+    
+    # 曜日別にパターンを返す
+    if weekday in [0, 1, 4]:  # 月火金
+        return ["weekday_full_A", "weekday_full_B", "weekday_full_C"]
+    elif weekday == 2:  # 水曜
+        return ["wednesday_early", "wednesday_normal", "wednesday_late"]
+    elif weekday in [3, 5]:  # 木土
+        return ["thu_sat_1", "thu_sat_2", "thu_sat_3"]
+    else:
+        return []
+
+
+def _select_best_pattern(
+    employee: Employee,
+    date: str,
+    available_patterns: List[str],
+    pattern_usage_count: Dict[Tuple[int, str], int],
+) -> str:
+    """勤務パターンの偏りを防止しつつ最適なパターンを選択
+    
+    Args:
+        employee: 職員オブジェクト
+        date: 日付文字列
+        available_patterns: 利用可能なパターンIDリスト
+        pattern_usage_count: (employee_id, pattern_id) -> 使用回数のマッピング
+    
+    Returns:
+        選択された勤務パターンID
+    """
+    if not available_patterns:
+        return None
+    
+    # 各パターンの使用回数を確認
+    usage_counts = []
+    for pattern_id in available_patterns:
+        count = pattern_usage_count.get((employee.id, pattern_id), 0)
+        usage_counts.append((pattern_id, count))
+    
+    # 最小使用回数のパターンから選択（偏り防止）
+    min_count = min(count for _, count in usage_counts)
+    least_used = [pid for pid, count in usage_counts if count == min_count]
+    
+    # 同率の場合は先頭を返す（シンプルな実装）
+    return least_used[0]
 
 
 def calculate_skill_score(employee: Employee, time_slot: TimeSlot) -> int:
@@ -349,28 +417,47 @@ def _assign_employees_to_slot(
     optimisation_mode: str,
     work_count: Dict[int, int],
     morning_workers: List[int],
-) -> List[Employee]:
-    """Assign employees to a time slot, preferring full-day workers for afternoon slots."""
+    pattern_usage_count: Dict[Tuple[int, str], int],
+) -> List[Tuple[Employee, str]]:
+    """Assign employees to a time slot with employment patterns, preferring full-day workers for afternoon slots.
+    
+    Returns:
+        List of (Employee, pattern_id) tuples
+    """
     required = slot.required_staff
-    selected: List[Employee] = []
+    selected_employees: List[Employee] = []
     
     # For afternoon slots, prefer employees who worked in the morning
     if slot.period == "afternoon" and morning_workers:
         afternoon_capable = [e for e in available if e.id in morning_workers]
         if afternoon_capable:
             needed = min(len(afternoon_capable), required)
-            selected = _select_employees_for_slot(afternoon_capable, slot, needed, work_count, optimisation_mode)
+            selected_employees = _select_employees_for_slot(afternoon_capable, slot, needed, work_count, optimisation_mode)
     
     # Fill remaining slots
-    if len(selected) < required:
-        remaining_available = [e for e in available if e not in selected]
-        additional_needed = required - len(selected)
+    if len(selected_employees) < required:
+        remaining_available = [e for e in available if e not in selected_employees]
+        additional_needed = required - len(selected_employees)
         additional = _select_employees_for_slot(
             remaining_available, slot, additional_needed, work_count, optimisation_mode
         )
-        selected.extend(additional)
+        selected_employees.extend(additional)
     
-    return selected
+    # 各職員に勤務パターンを割り当て
+    assignments: List[Tuple[Employee, str]] = []
+    for employee in selected_employees:
+        available_patterns = _get_available_patterns_for_day(date_str, employee)
+        pattern_id = _select_best_pattern(
+            employee, date_str, available_patterns, pattern_usage_count
+        )
+        assignments.append((employee, pattern_id))
+        
+        # パターン使用回数を更新
+        if pattern_id:
+            key = (employee.id, pattern_id)
+            pattern_usage_count[key] = pattern_usage_count.get(key, 0) + 1
+    
+    return assignments
 
 
 def _process_time_slot(
@@ -381,6 +468,7 @@ def _process_time_slot(
     work_count: Dict[int, int],
     optimisation_mode: str,
     morning_workers: List[int],
+    pattern_usage_count: Dict[Tuple[int, str], int],
 ) -> List[GeneratedShift]:
     """Process a single time slot and return generated shifts."""
     available, rejection_log = _filter_available_employees(employees, date_str, slot, schedule)
@@ -390,11 +478,11 @@ def _process_time_slot(
             _create_insufficient_staff_error(date_str, slot, available, rejection_log)
         )
     
-    selected = _assign_employees_to_slot(
-        available, slot, date_str, optimisation_mode, work_count, morning_workers
+    assignments = _assign_employees_to_slot(
+        available, slot, date_str, optimisation_mode, work_count, morning_workers, pattern_usage_count
     )
     
-    if len(selected) < slot.required_staff:
+    if len(assignments) < slot.required_staff:
         issue = ShiftGenerationIssue(
             code="selection_failed",
             message=(
@@ -406,13 +494,13 @@ def _process_time_slot(
             time_slot_name=slot.display_name,
             required=slot.required_staff,
             available=len(available),
-            shortage=slot.required_staff - len(selected),
+            shortage=slot.required_staff - len(assignments),
             available_employees=[emp.name for emp in available],
         )
         raise ShiftGenerationError(issue)
     
     shifts = []
-    for employee in selected:
+    for employee, pattern_id in assignments:
         shift = GeneratedShift(
             date=date_str,
             time_slot_id=slot.id,
@@ -424,6 +512,7 @@ def _process_time_slot(
             skill_score=calculate_skill_score(employee, slot),
             employee=employee,
             time_slot=slot,
+            employment_pattern_id=pattern_id,
         )
         shifts.append(shift)
         work_count[employee.id] += 1
@@ -439,6 +528,7 @@ def _process_daily_slots(
     work_count: Dict[int, int],
     optimisation_mode: str,
     time_slots: Sequence[TimeSlot],
+    pattern_usage_count: Dict[Tuple[int, str], int],
 ) -> List[GeneratedShift]:
     """Process all slots for a single day and return generated shifts."""
     morning_slots = [s for s in daily_slots if s.period == "morning"]
@@ -450,7 +540,7 @@ def _process_daily_slots(
     # Process morning slots
     for slot in morning_slots:
         shifts = _process_time_slot(
-            slot, date_str, employees, schedule, work_count, optimisation_mode, []
+            slot, date_str, employees, schedule, work_count, optimisation_mode, [], pattern_usage_count
         )
         schedule.extend(shifts)
         daily_assignments.extend(shifts)
@@ -462,7 +552,7 @@ def _process_daily_slots(
     for slot in afternoon_slots:
         morning_workers = morning_workers_by_area.get(slot.area, [])
         shifts = _process_time_slot(
-            slot, date_str, employees, schedule, work_count, optimisation_mode, morning_workers
+            slot, date_str, employees, schedule, work_count, optimisation_mode, morning_workers, pattern_usage_count
         )
         schedule.extend(shifts)
         daily_assignments.extend(shifts)
@@ -491,6 +581,7 @@ def generate_shifts(
 
     schedule: List[GeneratedShift] = []
     work_count: Dict[int, int] = {emp.id: 0 for emp in employees}
+    pattern_usage_count: Dict[Tuple[int, str], int] = {}
 
     all_slots_by_day: Dict[int, List[TimeSlot]] = {}
     for slot in time_slots:
@@ -503,7 +594,7 @@ def generate_shifts(
         daily_slots = all_slots_by_day.get(weekday, [])
 
         _process_daily_slots(
-            date_str, daily_slots, employees, schedule, work_count, optimisation_mode, time_slots
+            date_str, daily_slots, employees, schedule, work_count, optimisation_mode, time_slots, pattern_usage_count
         )
 
         current += timedelta(days=1)

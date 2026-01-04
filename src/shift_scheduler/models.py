@@ -18,6 +18,8 @@ class EmploymentPattern:
     work_hours: float
     can_work_afternoon: bool
     description: Optional[str] = None
+    day_type: Optional[str] = None
+    pattern_symbol: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -130,6 +132,7 @@ class GeneratedShift:
     skill_score: int
     employee: Employee
     time_slot: TimeSlot
+    employment_pattern_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload = asdict(self)

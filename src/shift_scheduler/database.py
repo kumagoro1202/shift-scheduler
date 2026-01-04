@@ -225,6 +225,8 @@ CREATE TABLE IF NOT EXISTS employment_patterns (
     work_hours REAL NOT NULL,
     can_work_afternoon BOOLEAN DEFAULT 1,
     description TEXT,
+    day_type TEXT,
+    pattern_symbol TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -315,6 +317,7 @@ def init_database() -> None:
     _seed_employment_patterns()
     _seed_time_slots()
     _migrate_employee_table()
+    _migrate_employment_pattern_table()
 
 
 def _migrate_employee_table() -> None:
@@ -328,6 +331,20 @@ def _migrate_employee_table() -> None:
             conn.commit()
 
 
+def _migrate_employment_pattern_table() -> None:
+    """Add day_type and pattern_symbol columns if they don't exist."""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(employment_patterns)")
+        columns = [row["name"] for row in cur.fetchall()]
+        if "day_type" not in columns:
+            cur.execute("ALTER TABLE employment_patterns ADD COLUMN day_type TEXT")
+            conn.commit()
+        if "pattern_symbol" not in columns:
+            cur.execute("ALTER TABLE employment_patterns ADD COLUMN pattern_symbol TEXT")
+            conn.commit()
+
+
 def _seed_employment_patterns() -> None:
     """Insert the default employment patterns if none exist."""
 
@@ -336,19 +353,37 @@ def _seed_employment_patterns() -> None:
         return
 
     patterns: List[Tuple] = [
-        ("full_early", "フルタイム（早番）", "full_time", "08:30", "18:30", 2.0, 8.0, 1, "正職員・早番"),
-        ("full_mid", "フルタイム（中番）", "full_time", "08:45", "18:45", 2.0, 8.0, 1, "正職員・中番"),
-        ("full_late", "フルタイム（遅番）", "full_time", "09:00", "19:00", 2.0, 8.0, 1, "正職員・遅番"),
-        ("short_time", "時短勤務", "short_time", "08:45", "16:45", 1.0, 7.0, 0, "正職員・時短"),
-        ("part_morning_early", "パート午前（早番）", "part_time", "08:30", "12:30", 0.0, 4.0, 0, "パート・午前4時間（早番）"),
-        ("part_morning", "パート午前", "part_time", "08:45", "12:45", 0.0, 4.0, 0, "パート・午前4時間"),
-        ("part_morning_ext", "パート午前延長", "part_time", "08:45", "13:45", 0.0, 5.0, 0, "パート・午前5時間"),
+        # 月火金の3パターン
+        ("weekday_full_A", "正職員A（月火金・早出）", "full_time", "08:30", "17:30", 1.0, 8.0, 1, "開院準備を担当", "weekday_full", "A"),
+        ("weekday_full_B", "正職員B（月火金・通常）", "full_time", "08:45", "18:45", 2.0, 8.0, 1, "標準シフト、基本2時間連続休憩", "weekday_full", "B"),
+        ("weekday_full_C", "正職員C（月火金・遅出）", "full_time", "09:15", "19:15", 2.0, 8.0, 1, "閉院作業・締め、基本2時間連続休憩", "weekday_full", "C"),
+        
+        # 水曜日の3パターン
+        ("wednesday_early", "正職員◯（水曜・早出）", "full_time", "08:30", "16:30", 1.0, 7.0, 1, "水曜午後は16:30まで", "wednesday", "◯"),
+        ("wednesday_normal", "正職員通常（水曜）", "full_time", "08:45", "17:45", 2.0, 7.0, 1, "標準シフト、基本2時間連続休憩", "wednesday", "通常"),
+        ("wednesday_late", "正職員△（水曜・遅出）", "full_time", "09:15", "18:15", 2.0, 7.0, 1, "午後診療終了後の残務対応、基本2時間連続休憩", "wednesday", "△"),
+        
+        # 木土の3パターン
+        ("thu_sat_1", "正職員1（木土・早出）", "full_time", "08:30", "12:30", 0.0, 4.0, 0, "開院準備を担当", "thu_sat", "1"),
+        ("thu_sat_2", "正職員2（木土・通常）", "full_time", "08:45", "12:45", 0.0, 4.0, 0, "標準シフト", "thu_sat", "2"),
+        ("thu_sat_3", "正職員3（木土・遅出）", "full_time", "09:00", "13:00", 0.0, 4.0, 0, "午前診療後の片付け", "thu_sat", "3"),
+        
+        # 既存のパターン（互換性のため残す）
+        ("full_early", "フルタイム（早番）", "full_time", "08:30", "18:30", 2.0, 8.0, 1, "正職員・早番", "all_days", "早"),
+        ("full_mid", "フルタイム（中番）", "full_time", "08:45", "18:45", 2.0, 8.0, 1, "正職員・中番", "all_days", "中"),
+        ("full_late", "フルタイム（遅番）", "full_time", "09:00", "19:00", 2.0, 8.0, 1, "正職員・遅番", "all_days", "遅"),
+        
+        # 時短・パート
+        ("short_time", "時短勤務", "short_time", "08:45", "16:45", 1.0, 7.0, 0, "正職員・時短", None, "短"),
+        ("part_morning_early", "パート午前（早番）", "part_time", "08:30", "12:30", 0.0, 4.0, 0, "パート・午前4時間（早番）", None, "パ早"),
+        ("part_morning", "パート午前", "part_time", "08:45", "12:45", 0.0, 4.0, 0, "パート・午前4時間", None, "パ"),
+        ("part_morning_ext", "パート午前延長", "part_time", "08:45", "13:45", 0.0, 5.0, 0, "パート・午前5時間", None, "パ延"),
     ]
     _execute(
         """
         INSERT INTO employment_patterns (
-            id, name, category, start_time, end_time, break_hours, work_hours, can_work_afternoon, description
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, name, category, start_time, end_time, break_hours, work_hours, can_work_afternoon, description, day_type, pattern_symbol
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         patterns,
         many=True,
@@ -459,6 +494,8 @@ def _row_to_pattern(row: sqlite3.Row) -> EmploymentPattern:
         work_hours=row["work_hours"],
         can_work_afternoon=bool(row["can_work_afternoon"]),
         description=row["description"],
+        day_type=row["day_type"] if "day_type" in row.keys() else None,
+        pattern_symbol=row["pattern_symbol"] if "pattern_symbol" in row.keys() else None,
     )
 
 
