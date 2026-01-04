@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
 import os
+import subprocess
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 import streamlit
@@ -13,12 +14,18 @@ streamlit_path = Path(streamlit.__file__).parent
 # プロジェクトルート（build.specがscripts/内にあるため）
 project_root = Path(os.getcwd())
 
-# サンプルデータ入りデータベースを最新化
-sys.path.insert(0, str(project_root))
-from scripts import init_sample_data  # noqa: E402  pylint: disable=wrong-import-position
-
-init_sample_data.seed_sample_data(force=True)
-init_sample_data.copy_seeded_database()
+# サンプルデータ入りデータベースを最新のコードで生成
+print("Generating sample data with the latest code...")
+result = subprocess.run(
+    [sys.executable, str(project_root / 'scripts' / 'init_sample_data.py'), '--force'],
+    cwd=str(project_root),
+    capture_output=True,
+    text=True
+)
+if result.returncode != 0:
+    print(f"Warning: Failed to generate sample data: {result.stderr}")
+else:
+    print("Sample data generation completed successfully")
 
 # Streamlitのメタデータとデータファイルを収集
 datas = [
