@@ -120,9 +120,27 @@ while current < end_dt:
 
 # 勤務パターンの凡例マッピング
 pattern_legend = {
+    # 汎用フルタイム
     "full_early": "早",
     "full_mid": "中",
     "full_late": "遅",
+    
+    # 月火金の3パターン
+    "weekday_full_A": "A",
+    "weekday_full_B": "B",
+    "weekday_full_C": "C",
+    
+    # 水曜日の3パターン
+    "wednesday_early": "◯",
+    "wednesday_normal": "通常",
+    "wednesday_late": "△",
+    
+    # 木土の3パターン
+    "thu_sat_1": "1",
+    "thu_sat_2": "2",
+    "thu_sat_3": "3",
+    
+    # 時短・パート
     "short_time": "短",
     "part_morning_early": "パ早",
     "part_morning": "パ",
@@ -275,28 +293,39 @@ st.markdown(html, unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("### 📖 凡例")
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.markdown("**勤務パターン:**")
-    st.markdown("- **早**: フルタイム早番 (08:30-18:30)")
-    st.markdown("- **中**: フルタイム中番 (08:45-18:45)")
-    st.markdown("- **遅**: フルタイム遅番 (09:00-19:00)")
-    st.markdown("- **短**: 時短勤務 (08:45-16:45)")
-
-with col2:
-    st.markdown("**パートタイム:**")
-    st.markdown("- **パ早**: パート午前早番 (08:30-12:30)")
-    st.markdown("- **パ**: パート午前 (08:45-12:45)")
-    st.markdown("- **パ延**: パート午前延長 (08:45-13:45)")
+    st.markdown("**月火金:**")
+    st.markdown("- **A**: 早出 (08:30-17:30)")
+    st.markdown("- **B**: 通常 (08:45-18:45)")
+    st.markdown("- **C**: 遅出 (09:15-19:15)")
+    st.markdown("")
+    st.markdown("**その他:**")
+    st.markdown("- **短**: 時短勤務")
     st.markdown("- **-**: 休み")
 
+with col2:
+    st.markdown("**水曜日:**")
+    st.markdown("- **◯**: 早出 (08:30-16:30)")
+    st.markdown("- **通常**: 通常 (08:45-17:45)")
+    st.markdown("- **△**: 遅出 (09:15-18:15)")
+
 with col3:
+    st.markdown("**木土:**")
+    st.markdown("- **1**: 早出 (08:30-12:30)")
+    st.markdown("- **2**: 通常 (08:45-12:45)")
+    st.markdown("- **3**: 遅出 (09:00-13:00)")
+
+with col4:
+    st.markdown("**パートタイム:**")
+    st.markdown("- **パ早**: 午前早番 (08:30-12:30)")
+    st.markdown("- **パ**: 午前 (08:45-12:45)")
+    st.markdown("- **パ延**: 午前延長 (08:45-13:45)")
+    st.markdown("")
     st.markdown("**業務エリア:**")
-    st.markdown("- 🟢 **リ**: リハ室（午前）")
-    st.markdown("- 🔵 **リ**: リハ室（午後）")
-    st.markdown("- 🟠 **受**: 受付（午前）")
-    st.markdown("- 🔴 **受**: 受付（午後）")
+    st.markdown("- 🟢リ 🟠受: 午前")
+    st.markdown("- 🔵リ 🔴受: 午後")
 
 # サイドバー
 with st.sidebar:
