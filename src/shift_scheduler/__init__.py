@@ -37,6 +37,7 @@ from .optimizer import (
     ShiftGenerationError,
     ShiftGenerationIssue,
     calculate_skill_balance,
+    calculate_pattern_distribution,
     generate_shifts,
 )
 from .utils import (
@@ -83,6 +84,7 @@ __all__ = [
     "reset_time_slots",
     "set_setting",
     "calculate_skill_balance",
+    "calculate_pattern_distribution",
     "generate_shifts",
     "ShiftGenerationError",
     "ShiftGenerationIssue",

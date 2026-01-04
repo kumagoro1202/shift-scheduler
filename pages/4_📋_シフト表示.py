@@ -184,6 +184,7 @@ st.markdown("""
         padding-left: 8px !important;
         white-space: nowrap;
         background-color: #ecf0f1;
+        color: #1f2937;
         position: sticky;
         left: 0;
         z-index: 5;
@@ -198,11 +199,39 @@ st.markdown("""
         font-size: 11px;
         line-height: 1.2;
     }
-    .reha-am { background-color: #a8e6cf; }
-    .reha-pm { background-color: #87ceeb; }
-    .reception-am { background-color: #ffd3b6; }
-    .reception-pm { background-color: #ffaaa5; }
-    .off-day { background-color: #e8e8e8; color: #999; }
+    .reha-am { 
+        background-color: #2d8659; 
+        color: #ffffff; 
+        font-weight: bold;
+        padding: 2px 4px;
+        margin: 1px;
+        border-radius: 3px;
+    }
+    .reha-pm { 
+        background-color: #1e5f8c; 
+        color: #ffffff; 
+        font-weight: bold;
+        padding: 2px 4px;
+        margin: 1px;
+        border-radius: 3px;
+    }
+    .reception-am { 
+        background-color: #d97706; 
+        color: #ffffff; 
+        font-weight: bold;
+        padding: 2px 4px;
+        margin: 1px;
+        border-radius: 3px;
+    }
+    .reception-pm { 
+        background-color: #c2410c; 
+        color: #ffffff; 
+        font-weight: bold;
+        padding: 2px 4px;
+        margin: 1px;
+        border-radius: 3px;
+    }
+    .off-day { background-color: #f3f4f6; color: #9ca3af; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -324,8 +353,10 @@ with col4:
     st.markdown("- **パ延**: 午前延長 (08:45-13:45)")
     st.markdown("")
     st.markdown("**業務エリア:**")
-    st.markdown("- 🟢リ 🟠受: 午前")
-    st.markdown("- 🔵リ 🔴受: 午後")
+    st.markdown('<span style="background-color: #2d8659; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;">リ 午前</span>', unsafe_allow_html=True)
+    st.markdown('<span style="background-color: #1e5f8c; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;">リ 午後</span>', unsafe_allow_html=True)
+    st.markdown('<span style="background-color: #d97706; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;">受 午前</span>', unsafe_allow_html=True)
+    st.markdown('<span style="background-color: #c2410c; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;">受 午後</span>', unsafe_allow_html=True)
 
 # サイドバー
 with st.sidebar:
@@ -344,8 +375,9 @@ with st.sidebar:
         - 凡例で勤務パターンを確認
         
         **色分け:**
-        - 緑: リハ室午前
-        - 青: リハ室午後
+        - 濃い緑: リハ室午前
+        - 濃い青: リハ室午後
         - オレンジ: 受付午前
-        - 赤: 受付午後
+        - 濃いオレンジ: 受付午後
+        - 灰色: 休み
         """)

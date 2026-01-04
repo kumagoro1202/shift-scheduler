@@ -508,6 +508,142 @@ def _process_daily_slots(date_str, daily_slots, employees, schedule,
     return daily_assignments
 ```
 
+### 5.4 正職員の勤務パターン動的選択
+
+正職員（通常）は`is_pattern_fixed=False`が設定されており、日によって早番・中番・遅番を変動的に割り当てます。
+
+#### 5.4.1 曜日別パターンの判定
+
+```python
+def _get_available_patterns_for_day(date: str, employee: Employee) -> List[str]:
+    """指定日の曜日に応じて利用可能な勤務パターンIDのリストを返す
+    
+    Args:
+        date: YYYY-MM-DD形式の日付文字列
+        employee: 職員オブジェクト
+    
+    Returns:
+        利用可能な勤務パターンIDのリスト
+    """
+    # パターン固定の場合は登録済みパターンを返す
+    if employee.is_pattern_fixed:
+        return [employee.employment_pattern_id] if employee.employment_pattern_id else []
+    
+    # 曜日判定
+    date_obj = datetime.strptime(date, "%Y-%m-%d")
+    weekday = date_obj.weekday()  # 0=月, 1=火, 2=水, 3=木, 4=金, 5=土, 6=日
+    
+    # 曜日別にパターンを返す
+    if weekday in [0, 1, 4]:  # 月火金
+        return ["weekday_full_A", "weekday_full_B", "weekday_full_C"]
+    elif weekday == 2:  # 水曜
+        return ["wednesday_early", "wednesday_normal", "wednesday_late"]
+    elif weekday in [3, 5]:  # 木土
+        return ["thu_sat_1", "thu_sat_2", "thu_sat_3"]
+    else:
+        return []
+```
+
+**曜日別パターン一覧**:
+
+| 曜日 | 利用可能パターン | 記号 | 時間帯 | 説明 |
+|------|----------------|------|--------|------|
+| 月火金 | weekday_full_A | A | 08:30-17:30 | 早出（開院準備） |
+| 月火金 | weekday_full_B | B | 08:45-18:45 | 通常（2時間休憩） |
+| 月火金 | weekday_full_C | C | 09:15-19:15 | 遅出（閉院作業） |
+| 水曜 | wednesday_early | ◯ | 08:30-16:30 | 早出 |
+| 水曜 | wednesday_normal | 通常 | 08:45-17:45 | 通常（2時間休憩） |
+| 水曜 | wednesday_late | △ | 09:15-18:15 | 遅出 |
+| 木土 | thu_sat_1 | 1 | 08:30-12:30 | 早出 |
+| 木土 | thu_sat_2 | 2 | 08:45-12:45 | 通常 |
+| 木土 | thu_sat_3 | 3 | 09:00-13:00 | 遅出 |
+
+#### 5.4.2 パターンの偏り防止
+
+同一職員が特定のパターンに偏らないよう、使用回数を追跡して最小使用回数のパターンを優先的に選択します。
+
+```python
+def _select_best_pattern(
+    employee: Employee,
+    date: str,
+    available_patterns: List[str],
+    pattern_usage_count: Dict[tuple[int, str], int],
+) -> str:
+    """勤務パターンの偏りを防止しつつ最適なパターンを選択
+    
+    Args:
+        employee: 職員オブジェクト
+        date: 日付文字列
+        available_patterns: 利用可能なパターンIDリスト
+        pattern_usage_count: (employee_id, pattern_id) -> 使用回数のマッピング
+    
+    Returns:
+        選択された勤務パターンID
+    """
+    if not available_patterns:
+        return None
+    
+    # 各パターンの使用回数を確認
+    usage_counts = []
+    for pattern_id in available_patterns:
+        count = pattern_usage_count.get((employee.id, pattern_id), 0)
+        usage_counts.append((pattern_id, count))
+    
+    # 最小使用回数のパターンから選択（偏り防止）
+    min_count = min(count for _, count in usage_counts)
+    least_used = [pid for pid, count in usage_counts if count == min_count]
+    
+    # 同率の場合は先頭を返す
+    return least_used[0]
+```
+
+**偏り防止の仕組み**:
+1. 各職員の勤務パターン使用回数を`pattern_usage_count`で追跡
+2. パターン割り当て時に最小使用回数のパターンを優先
+3. これにより、同一職員が常に同じパターン（例: 早番ばかり）になることを防止
+4. 開院準備・閉院作業などの負担が特定職員に集中しない
+
+#### 5.4.3 シフト生成への統合
+
+```python
+def _assign_employees_to_slot(..., pattern_usage_count):
+    """職員と勤務パターンのペアを割り当てる"""
+    # ... 職員選択ロジック ...
+    
+    # 各職員に勤務パターンを割り当て
+    assignments: List[tuple[Employee, str]] = []
+    for employee in selected_employees:
+        available_patterns = _get_available_patterns_for_day(date_str, employee)
+        pattern_id = _select_best_pattern(
+            employee, date_str, available_patterns, pattern_usage_count
+        )
+        assignments.append((employee, pattern_id))
+        
+        # パターン使用回数を更新
+        if pattern_id:
+            key = (employee.id, pattern_id)
+            pattern_usage_count[key] = pattern_usage_count.get(key, 0) + 1
+    
+    return assignments
+```
+
+**生成されるシフトオブジェクト**:
+```python
+GeneratedShift(
+    date=date_str,
+    time_slot_id=slot.id,
+    employee_id=employee.id,
+    employment_pattern_id=pattern_id,  # 動的に選択されたパターンID
+    # ... その他のフィールド ...
+)
+```
+
+**利点**:
+- 正職員の負担が公平に分散される
+- 開院準備・閉院作業の担当が固定化されない
+- スキルバランスと勤務パターンのバランスが最適化される
+- パート・時短職員は固定パターンで安定した働き方が可能
+
 ---
 
 ## 6. 制約条件の検証

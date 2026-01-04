@@ -632,3 +632,26 @@ def calculate_skill_balance(shifts: Sequence[GeneratedShift], time_slots: Sequen
         "max_skill": float(max(scores)),
         "balance_score": (std_dev / average) if average > 0 else 0.0,
     }
+
+
+def calculate_pattern_distribution(shifts: Sequence[GeneratedShift]) -> Dict[int, Dict[str, int]]:
+    """勤務パターンの分布を計算する。
+    
+    各職員がどのパターンを何回使用しているかを集計し、
+    パターンの偏りを検証するための統計情報を提供する。
+    
+    Args:
+        shifts: 生成されたシフトのリスト
+    
+    Returns:
+        {employee_id: {pattern_id: count}} の辞書
+        例: {1: {"weekday_full_A": 3, "weekday_full_B": 2, "weekday_full_C": 2}}
+    """
+    distribution: Dict[int, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    
+    for shift in shifts:
+        if shift.employment_pattern_id and shift.employee_id:
+            distribution[shift.employee_id][shift.employment_pattern_id] += 1
+    
+    # defaultdictを通常のdictに変換
+    return {emp_id: dict(patterns) for emp_id, patterns in distribution.items()}

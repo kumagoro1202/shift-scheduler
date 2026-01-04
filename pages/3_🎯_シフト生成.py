@@ -23,10 +23,12 @@ from shift_scheduler import (
     delete_shifts_by_date_range,
     generate_shifts,
     calculate_skill_balance,
+    calculate_pattern_distribution,
     get_month_range,
     ShiftGenerationError,
     auto_assign_and_save_breaks,
     list_shifts,
+    get_employment_pattern,
 )
 
 st.set_page_config(page_title="シフト生成", page_icon="🎯", layout="wide")
@@ -370,6 +372,63 @@ with col_btn1:
                     st.info("✨ スキルバランスは良好です")
                 else:
                     st.warning("⚠️ スキルにやや偏りがあります")
+                
+                # 勤務パターン分布の表示
+                pattern_dist = calculate_pattern_distribution(result_shifts)
+                
+                if pattern_dist:
+                    with st.expander("📊 勤務パターン分布"):
+                        st.markdown("各職員の勤務パターン使用回数を表示します。正職員は日ごとに異なるパターンが割り当てられ、負担が公平に分散されます。")
+                        
+                        # パターン記号のマッピング
+                        pattern_symbols = {
+                            "weekday_full_A": "A",
+                            "weekday_full_B": "B",
+                            "weekday_full_C": "C",
+                            "wednesday_early": "◯",
+                            "wednesday_normal": "通常",
+                            "wednesday_late": "△",
+                            "thu_sat_1": "1",
+                            "thu_sat_2": "2",
+                            "thu_sat_3": "3",
+                            "short_time": "短",
+                            "part_morning_early": "パ早",
+                            "part_morning": "パ",
+                            "part_morning_ext": "パ延",
+                        }
+                        
+                        # 職員IDと名前のマッピングを作成
+                        emp_dict = {emp.id: emp for emp in employees}
+                        
+                        for emp_id, patterns in sorted(pattern_dist.items()):
+                            emp = emp_dict.get(emp_id)
+                            if emp:
+                                emp_name = emp.name
+                                fixed_icon = "📌" if emp.is_pattern_fixed else "🔄"
+                                
+                                st.markdown(f"**{emp_name}** {fixed_icon}")
+                                
+                                # パターンごとの回数を表示
+                                pattern_items = []
+                                for pattern_id, count in sorted(patterns.items(), key=lambda x: x[1], reverse=True):
+                                    symbol = pattern_symbols.get(pattern_id, pattern_id)
+                                    pattern_items.append(f"{symbol}: {count}回")
+                                
+                                st.markdown("　　" + " / ".join(pattern_items))
+                                
+                                # 偏りのチェック（正職員のみ）
+                                if not emp.is_pattern_fixed and len(patterns) > 1:
+                                    counts = list(patterns.values())
+                                    max_count = max(counts)
+                                    min_count = min(counts)
+                                    diff = max_count - min_count
+                                    
+                                    if diff <= 1:
+                                        st.markdown("　　✅ 偏りなし（均等配分）")
+                                    elif diff <= 2:
+                                        st.markdown("　　✨ 偏り小（良好）")
+                                    else:
+                                        st.markdown(f"　　⚠️ 偏りあり（差: {diff}回）")
                 
                 st.markdown("---")
                 st.info("📋 「シフト表示」ページで生成されたシフトを確認できます")
