@@ -23,7 +23,7 @@ from shift_scheduler import (
     get_month_range,
 )
 
-st.set_page_config(page_title="シフト表示", page_icon="📋", layout="wide")
+st.set_page_config(page_title="📋 シフト表示", page_icon="📋", layout="wide")
 
 # データベース初期化
 init_database()

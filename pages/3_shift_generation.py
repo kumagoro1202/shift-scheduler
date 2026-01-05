@@ -31,7 +31,7 @@ from shift_scheduler import (
     get_employment_pattern,
 )
 
-st.set_page_config(page_title="シフト生成", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="🎯 シフト生成", page_icon="🎯", layout="wide")
 
 # データベース初期化
 init_database()

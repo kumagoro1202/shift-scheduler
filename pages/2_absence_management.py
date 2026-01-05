@@ -25,7 +25,7 @@ from shift_scheduler import (
     get_month_range,
 )
 
-st.set_page_config(page_title="休暇管理", page_icon="🏖️", layout="wide")
+st.set_page_config(page_title="🏖️ 休暇管理", page_icon="🏖️", layout="wide")
 
 init_database()
 

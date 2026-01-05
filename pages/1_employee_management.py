@@ -17,7 +17,7 @@ from shift_scheduler import (
     list_employment_patterns,
 )
 
-st.set_page_config(page_title="職員管理", page_icon="👥", layout="wide")
+st.set_page_config(page_title="👥 職員管理", page_icon="👥", layout="wide")
 
 # データベース初期化
 init_database()
