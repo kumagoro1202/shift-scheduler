@@ -13,13 +13,13 @@ from src.shift_scheduler.utils import (
 
 def test_get_month_range_crosses_year_boundary() -> None:
     start, end = get_month_range(2025, 12)
-    assert start == "2025-12-20"
+    assert start == "2025-12-21"
     assert end == "2026-01-20"
 
 
 def test_get_month_range_normal_month() -> None:
     start, end = get_month_range(2025, 6)
-    assert start == "2025-06-20"
+    assert start == "2025-06-21"
     assert end == "2025-07-20"
 
 

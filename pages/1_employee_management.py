@@ -4,6 +4,9 @@
 import streamlit as st
 import sys
 from pathlib import Path
+import csv
+import io
+from typing import List, Dict, Any
 
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
@@ -44,8 +47,74 @@ PATTERN_CATEGORY_LABELS = {
 EMPLOYMENT_PATTERNS = list_employment_patterns()
 PATTERN_LOOKUP = {pattern.id: pattern for pattern in EMPLOYMENT_PATTERNS}
 
+
+def export_employees_to_csv(employees: List[Any]) -> str:
+    """職員データをCSV形式で出力"""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # ヘッダー行
+    writer.writerow([
+        '名前', '職員タイプ', '雇用形態', '勤務パターンID',
+        'パターン固定', 'リハ室スキル', '受付午前スキル',
+        '受付午後スキル', '総合対応力'
+    ])
+    
+    # データ行
+    for emp in employees:
+        writer.writerow([
+            emp.name,
+            emp.employee_type,
+            emp.employment_type,
+            emp.employment_pattern_id or '',
+            'True' if getattr(emp, 'is_pattern_fixed', False) else 'False',
+            emp.skill_reha,
+            emp.skill_reception_am,
+            emp.skill_reception_pm,
+            emp.skill_general
+        ])
+    
+    return output.getvalue()
+
+
+def parse_csv_employees(csv_content: str) -> List[Dict[str, Any]]:
+    """CSVコンテンツをパースして職員データのリストを返す"""
+    employees = []
+    reader = csv.DictReader(io.StringIO(csv_content))
+    
+    for row in reader:
+        try:
+            employee_data = {
+                'name': row['名前'].strip(),
+                'employee_type': row['職員タイプ'].strip(),
+                'employment_type': row['雇用形態'].strip(),
+                'employment_pattern_id': row['勤務パターンID'].strip() or None,
+                'is_pattern_fixed': row['パターン固定'].strip().lower() == 'true',
+                'skill_reha': int(row['リハ室スキル']),
+                'skill_reception_am': int(row['受付午前スキル']),
+                'skill_reception_pm': int(row['受付午後スキル']),
+                'skill_general': int(row['総合対応力'])
+            }
+            
+            # バリデーション
+            if not employee_data['name']:
+                continue
+                
+            if employee_data['employee_type'] not in ['TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D', 'TYPE_E', 'TYPE_F']:
+                continue
+                
+            if employee_data['employment_type'] not in ['正職員', 'パート']:
+                continue
+            
+            employees.append(employee_data)
+        except (KeyError, ValueError) as e:
+            continue
+    
+    return employees
+
+
 # 通常モード：タブで表示
-tab1, tab2 = st.tabs(["職員一覧", "新規登録"])
+tab1, tab2, tab3 = st.tabs(["職員一覧", "新規登録", "CSV入出力"])
 
 # タブ1: 職員一覧
 with tab1:
@@ -498,6 +567,151 @@ if submit_button:
             st.rerun()
         else:
             st.error("登録に失敗しました")
+
+# タブ3: CSV入出力
+with tab3:
+    st.subheader("📤 CSV出力")
+    st.markdown("現在登録されている職員データをCSV形式でエクスポートします。")
+    
+    employees = list_employees()
+    if employees:
+        csv_data = export_employees_to_csv(employees)
+        
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.info(f"📊 出力対象: {len(employees)}名の職員データ")
+        with col2:
+            st.download_button(
+                label="📥 CSVダウンロード",
+                data=csv_data,
+                file_name="employees.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+    else:
+        st.warning("出力可能な職員データがありません。")
+    
+    st.markdown("---")
+    
+    st.subheader("📥 CSV取り込み")
+    st.markdown("CSV形式で職員データを一括登録します。")
+    
+    with st.expander("📋 CSVフォーマット"):
+        st.markdown("""
+        **必須列**:
+        - 名前
+        - 職員タイプ (TYPE_A, TYPE_B, TYPE_C, TYPE_D, TYPE_E, TYPE_F)
+        - 雇用形態 (正職員, パート)
+        - 勤務パターンID
+        - パターン固定 (True, False)
+        - リハ室スキル (0-100)
+        - 受付午前スキル (0-100)
+        - 受付午後スキル (0-100)
+        - 総合対応力 (0-100)
+        
+        **サンプル**:
+        ```
+        名前,職員タイプ,雇用形態,勤務パターンID,パターン固定,リハ室スキル,受付午前スキル,受付午後スキル,総合対応力
+        山田太郎,TYPE_A,正職員,P01,False,80,75,75,70
+        鈴木花子,TYPE_B,パート,P09,True,0,85,85,60
+        ```
+        
+        **注意事項**:
+        - ヘッダー行は必須です
+        - 文字コードはUTF-8を推奨します
+        - 職員タイプに応じて、使用しないスキルは0に設定してください
+        """)
+    
+    # 既存職員の扱い
+    clear_existing = st.radio(
+        "既存職員の扱い",
+        ["保持する（追加のみ）", "削除してから取り込む"],
+        help="取り込み前に既存の職員データをすべて削除するか選択できます"
+    )
+    
+    uploaded_file = st.file_uploader(
+        "CSVファイルを選択",
+        type=['csv'],
+        help="UTF-8エンコードのCSVファイルをアップロードしてください"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            # ファイル内容を読み込み
+            csv_content = uploaded_file.read().decode('utf-8')
+            
+            # パース
+            parsed_employees = parse_csv_employees(csv_content)
+            
+            if not parsed_employees:
+                st.error("❌ 有効な職員データが見つかりませんでした。CSVフォーマットを確認してください。")
+            else:
+                st.success(f"✅ {len(parsed_employees)}名の職員データを読み込みました")
+                
+                # プレビュー表示
+                with st.expander("📋 取り込みデータのプレビュー", expanded=True):
+                    preview_data = []
+                    for emp_data in parsed_employees:
+                        pattern = PATTERN_LOOKUP.get(emp_data['employment_pattern_id'])
+                        preview_data.append({
+                            '名前': emp_data['name'],
+                            '職員タイプ': emp_data['employee_type'],
+                            '雇用形態': emp_data['employment_type'],
+                            '勤務パターン': pattern.name if pattern else '未設定',
+                            '固定': '📌' if emp_data['is_pattern_fixed'] else '🔄',
+                            'リハ室': emp_data['skill_reha'],
+                            '受付AM': emp_data['skill_reception_am'],
+                            '受付PM': emp_data['skill_reception_pm'],
+                            '総合': emp_data['skill_general']
+                        })
+                    st.dataframe(preview_data, use_container_width=True)
+                
+                # 取り込み実行ボタン
+                if st.button("🚀 取り込み実行", type="primary", use_container_width=True):
+                    try:
+                        # 既存職員の削除
+                        if clear_existing == "削除してから取り込む":
+                            existing_employees = list_employees()
+                            deleted_count = 0
+                            for emp in existing_employees:
+                                if delete_employee(emp.id):
+                                    deleted_count += 1
+                            st.info(f"既存職員 {deleted_count}名を削除しました")
+                        
+                        # 新規登録
+                        success_count = 0
+                        error_count = 0
+                        
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
+                        for idx, emp_data in enumerate(parsed_employees):
+                            status_text.text(f"登録中... ({idx + 1}/{len(parsed_employees)})")
+                            progress_bar.progress((idx + 1) / len(parsed_employees))
+                            
+                            employee_id = create_employee(**emp_data)
+                            if employee_id:
+                                success_count += 1
+                            else:
+                                error_count += 1
+                        
+                        progress_bar.empty()
+                        status_text.empty()
+                        
+                        if error_count == 0:
+                            st.success(f"✅ {success_count}名の職員を登録しました！")
+                            st.balloons()
+                            st.rerun()
+                        else:
+                            st.warning(f"⚠️ {success_count}名成功、{error_count}名失敗しました")
+                    
+                    except Exception as e:
+                        st.error(f"❌ 取り込み中にエラーが発生しました: {str(e)}")
+        
+        except UnicodeDecodeError:
+            st.error("❌ ファイルの読み込みに失敗しました。UTF-8エンコードのCSVファイルをアップロードしてください。")
+        except Exception as e:
+            st.error(f"❌ エラーが発生しました: {str(e)}")
 
 # サイドバーにヘルプ
 with st.sidebar:

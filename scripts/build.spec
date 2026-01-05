@@ -3,7 +3,7 @@ import sys
 import os
 import subprocess
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata, collect_all
 import streamlit
 
 block_cipher = None
@@ -39,11 +39,16 @@ datas += copy_metadata('altair')
 datas += copy_metadata('pillow')
 datas += copy_metadata('pydeck')
 datas += copy_metadata('plotly')
-# pyarrowはオプショナルなので、存在する場合のみメタデータを収集
+
+# pyarrowの完全な収集
 try:
+    pyarrow_datas, pyarrow_binaries, pyarrow_hiddenimports = collect_all('pyarrow')
+    datas += pyarrow_datas
     datas += copy_metadata('pyarrow')
-except Exception:
-    pass
+    print(f"PyArrow collected: {len(pyarrow_datas)} data files, {len(pyarrow_binaries)} binaries")
+except Exception as e:
+    print(f"Warning: Failed to collect pyarrow: {e}")
+
 datas += collect_data_files('streamlit', include_py_files=True)
 datas += collect_data_files('streamlit.web')
 datas += collect_data_files('streamlit.runtime')
@@ -51,7 +56,7 @@ datas += collect_data_files('streamlit.runtime')
 a = Analysis(
     [str(project_root / 'scripts' / 'launcher.py')],
     pathex=[],
-    binaries=[],
+    binaries=pyarrow_binaries if 'pyarrow_binaries' in locals() else [],
     datas=datas,
     hiddenimports=[
             'streamlit',
@@ -77,7 +82,11 @@ a = Analysis(
             'pydeck',
             'PIL',
             'pyarrow',
-        ] + collect_submodules('shift_scheduler') + collect_submodules('pyarrow'),
+            'pyarrow.lib',
+            'pyarrow.vendored',
+        ] + collect_submodules('shift_scheduler') 
+          + collect_submodules('pyarrow')
+          + (pyarrow_hiddenimports if 'pyarrow_hiddenimports' in locals() else []),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -110,7 +110,7 @@ with col_schedule1:
         }
         
         df = pd.DataFrame(schedule_data)
-        st.dataframe(df, width="stretch", hide_index=True)
+        st.dataframe(df, width='stretch', hide_index=True)
 
 with col_schedule2:
     with st.expander("業務エリア情報", expanded=False):

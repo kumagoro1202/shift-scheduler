@@ -22,9 +22,13 @@ def generate_date_list(start_date: str, end_date: str) -> List[str]:
 
 
 def get_month_range(year: int, month: int, closing_day: int = 20) -> tuple[str, str]:
-    """Return the scheduling period for a month based on the closing day."""
+    """Return the scheduling period for a month based on the closing day.
+    
+    Returns period from (closing_day + 1) to next month's closing_day.
+    For example, with closing_day=20: from 21st to next month's 20th.
+    """
 
-    start = datetime(year, month, closing_day)
+    start = datetime(year, month, closing_day) + timedelta(days=1)
 
     if month == 12:
         next_month_year = year + 1
