@@ -15,17 +15,19 @@ streamlit_path = Path(streamlit.__file__).parent
 project_root = Path(os.getcwd())
 
 # サンプルデータ入りデータベースを最新のコードで生成
-print("Generating sample data with the latest code...")
+print("Generating test data from actual shift CSV...")
 result = subprocess.run(
-    [sys.executable, str(project_root / 'scripts' / 'init_sample_data.py'), '--force'],
+    [sys.executable, str(project_root / 'scripts' / 'init_test_data.py'), '--force'],
     cwd=str(project_root),
     capture_output=True,
     text=True
 )
 if result.returncode != 0:
-    print(f"Warning: Failed to generate sample data: {result.stderr}")
+    print(f"Warning: Failed to generate test data: {result.stderr}")
+    print(f"stdout: {result.stdout}")
 else:
-    print("Sample data generation completed successfully")
+    print("Test data generation completed successfully")
+    print(result.stdout)
 
 # Streamlitのメタデータとデータファイルを収集
 datas = [

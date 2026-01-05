@@ -26,14 +26,24 @@
 # 依存パッケージのインストール
 pip install -r requirements.txt
 
-# サンプルデータの投入（任意）
-python scripts/init_sample_data.py
+# テストデータの投入（初回起動時）
+# 実際のシフトCSVから職員・休暇データを生成します
+python scripts/init_test_data.py --force
 
 # アプリケーションの起動
 streamlit run main.py
 ```
 
 ブラウザが自動的に開き、`http://localhost:8501` でアプリケーションにアクセスできます。
+
+### 配布用ビルド
+
+配布パッケージには、実際のシフトデータに基づくテストデータが事前にセットアップされています。
+ビルド時に自動的に`scripts/init_test_data.py`が実行され、最新のテストデータが組み込まれます。
+
+**セキュリティ注意事項**: 
+- `report/*.csv`ファイルは個人情報を含むため、Git管理対象外です
+- 配布時は職員情報が含まれることに注意してください
 
 ## 機能一覧
 
@@ -152,7 +162,8 @@ shift-scheduler/
 ├── scripts/                # ユーティリティスクリプト
 │   ├── run.bat             # 起動用バッチファイル（Windows）
 │   ├── reset_db.bat        # データベースリセット（Windows）
-│   ├── init_sample_data.py # サンプルデータ投入
+│   ├── init_test_data.py   # テストデータ投入（実シフトCSVベース）
+│   ├── setup_database.py   # データベース初期化
 │   ├── launcher.py         # PyInstaller用ランチャー
 │   └── build.spec          # PyInstallerビルド設定
 ├── tests/                  # テストファイル
@@ -161,6 +172,8 @@ shift-scheduler/
 │   ├── test_breaks_module.py     # 休憩スケジューラーテスト
 │   ├── test_break_scheduler.py   # 休憩スケジューラーテスト（互換）
 │   └── test_optimizer.py         # 最適化テスト
+├── report/                 # シフト出力ディレクトリ
+│   └── .gitkeep            # （CSV出力先、個人情報のため除外）
 ├── data/                   # データベース（自動生成）
 │   └── shift.db            # SQLiteデータベース
 └── build/                  # ビルド成果物

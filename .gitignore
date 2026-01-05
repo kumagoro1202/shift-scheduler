@@ -64,3 +64,7 @@ desktop.ini
 # Test outputs (keep test scripts themselves)
 tests/*.xlsx
 tests/*.csv
+
+# Report directory - keep structure but exclude CSV files
+report/*.csv
+!report/.gitkeep
