@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .availability import describe_unavailability, is_employee_available
+from .database import get_employment_pattern
 from .models import Employee, EmploymentPattern, GeneratedShift, TimeSlot
 
 
@@ -100,14 +101,16 @@ def _get_available_patterns_for_day(date: str, employee: Employee) -> List[str]:
 def _select_best_pattern(
     employee: Employee,
     date: str,
+    time_slot: TimeSlot,
     available_patterns: List[str],
     pattern_usage_count: Dict[Tuple[int, str], int],
 ) -> str:
-    """勤務パターンの偏りを防止しつつ最適なパターンを選択
+    """勤務パターンの偏りを防止しつつ、時間帯に適したパターンを選択
     
     Args:
         employee: 職員オブジェクト
         date: 日付文字列
+        time_slot: 時間帯オブジェクト
         available_patterns: 利用可能なパターンIDリスト
         pattern_usage_count: (employee_id, pattern_id) -> 使用回数のマッピング
     
@@ -117,9 +120,44 @@ def _select_best_pattern(
     if not available_patterns:
         return None
     
+    # 時間帯の終了時刻を取得
+    try:
+        slot_end = datetime.strptime(time_slot.end_time, "%H:%M").time()
+    except ValueError:
+        slot_end = None
+    
+    # 時間帯に対応可能なパターンのみをフィルタ
+    suitable_patterns = []
+    for pattern_id in available_patterns:
+        pattern = get_employment_pattern(pattern_id)
+        if pattern is None:
+            continue
+        
+        # 午後勤務可否チェック
+        if time_slot.period == "afternoon" and not pattern.can_work_afternoon:
+            continue
+        
+        # 時間チェック
+        if slot_end:
+            try:
+                pattern_end = datetime.strptime(pattern.end_time, "%H:%M").time()
+                pattern_start = datetime.strptime(pattern.start_time, "%H:%M").time()
+                slot_start = datetime.strptime(time_slot.start_time, "%H:%M").time()
+                # パターンの勤務時間が時間帯をカバーできる
+                if pattern_start <= slot_start and pattern_end >= slot_end:
+                    suitable_patterns.append(pattern_id)
+            except ValueError:
+                continue
+        else:
+            suitable_patterns.append(pattern_id)
+    
+    # 適したパターンがない場合は元のリストから選択
+    if not suitable_patterns:
+        suitable_patterns = available_patterns
+    
     # 各パターンの使用回数を確認
     usage_counts = []
-    for pattern_id in available_patterns:
+    for pattern_id in suitable_patterns:
         count = pattern_usage_count.get((employee.id, pattern_id), 0)
         usage_counts.append((pattern_id, count))
     
@@ -448,7 +486,7 @@ def _assign_employees_to_slot(
     for employee in selected_employees:
         available_patterns = _get_available_patterns_for_day(date_str, employee)
         pattern_id = _select_best_pattern(
-            employee, date_str, available_patterns, pattern_usage_count
+            employee, date_str, slot, available_patterns, pattern_usage_count
         )
         assignments.append((employee, pattern_id))
         

@@ -65,6 +65,15 @@ desktop.ini
 tests/*.xlsx
 tests/*.csv
 
+# Data files with personal information
+data/*.csv
+data/*.xlsx
+
 # Report directory - keep structure but exclude CSV files
 report/*.csv
+report/*.xlsx
 !report/.gitkeep
+
+# Scripts output files
+scripts/*.csv
+scripts/*.xlsx

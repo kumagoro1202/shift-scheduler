@@ -69,16 +69,16 @@ _TIME_SLOT_DEFINITIONS = [
     ("wed_recep_am", 2, "morning", "08:30", "13:00", 1, 2, "受付", "受付（水曜午前）", 1.0, None),
     ("wed_recep_pm", 2, "afternoon", "13:00", "18:00", 1, 2, "受付", "受付（水曜午後）", 1.0, None),
     # Thursday (morning only)
-    ("thu_reha_am", 3, "morning", "08:45", "13:00", 1, 2, "リハ室", "リハ室（木曜午前）", 1.0, None),
-    ("thu_recep_am", 3, "morning", "08:30", "13:00", 1, 2, "受付", "受付（木曜午前）", 1.0, None),
+    ("thu_reha_am", 3, "morning", "08:45", "12:30", 1, 2, "リハ室", "リハ室（木曜午前）", 1.0, None),
+    ("thu_recep_am", 3, "morning", "08:30", "12:30", 1, 2, "受付", "受付（木曜午前）", 1.0, None),
     # Friday
     ("fri_reha_am", 4, "morning", "08:45", "13:00", 1, 2, "リハ室", "リハ室（金曜午前）", 1.0, None),
     ("fri_reha_pm", 4, "afternoon", "13:00", "19:00", 1, 2, "リハ室", "リハ室（金曜午後）", 1.0, None),
     ("fri_recep_am", 4, "morning", "08:30", "13:00", 1, 2, "受付", "受付（火曜午前）", 1.0, None),
     ("fri_recep_pm", 4, "afternoon", "13:00", "19:00", 1, 2, "受付", "受付（金曜午後）", 1.0, None),
     # Saturday (morning only)
-    ("sat_reha_am", 5, "morning", "08:45", "13:30", 1, 2, "リハ室", "リハ室（土曜午前）", 1.0, None),
-    ("sat_recep_am", 5, "morning", "08:30", "13:30", 1, 2, "受付", "受付（土曜午前）", 1.0, None),
+    ("sat_reha_am", 5, "morning", "08:45", "13:00", 1, 2, "リハ室", "リハ室（土曜午前）", 1.0, None),
+    ("sat_recep_am", 5, "morning", "08:30", "13:00", 1, 2, "受付", "受付（土曜午前）", 1.0, None),
 ]
 
 def _read_template_version(db_path: Path) -> Optional[str]:
@@ -200,8 +200,8 @@ _EMPLOYEE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS employees (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    employee_type TEXT NOT NULL CHECK(employee_type IN ('TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D')),
-    employment_type TEXT NOT NULL CHECK(employment_type IN ('正職員', 'パート')),
+    employee_type TEXT NOT NULL CHECK(employee_type IN ('TYPE_A', 'TYPE_B', 'TYPE_C', 'TYPE_D', 'TYPE_E', 'TYPE_F')),
+    employment_type TEXT NOT NULL CHECK(employment_type IN ('正職員', 'パート', '時短')),
     employment_pattern_id TEXT REFERENCES employment_patterns(id),
     skill_reha INTEGER DEFAULT 50 CHECK(skill_reha BETWEEN 0 AND 100),
     skill_reception_am INTEGER DEFAULT 50 CHECK(skill_reception_am BETWEEN 0 AND 100),
@@ -375,9 +375,13 @@ def _seed_employment_patterns() -> None:
         
         # 時短・パート
         ("short_time", "時短勤務", "short_time", "08:45", "16:45", 1.0, 7.0, 0, "正職員・時短", None, "短"),
+        ("short_time_default", "時短勤務（デフォルト）", "short_time", "08:45", "16:45", 1.0, 7.0, 1, "時短勤務・標準", None, "短"),
         ("part_morning_early", "パート午前（早番）", "part_time", "08:30", "12:30", 0.0, 4.0, 0, "パート・午前4時間（早番）", None, "パ早"),
         ("part_morning", "パート午前", "part_time", "08:45", "12:45", 0.0, 4.0, 0, "パート・午前4時間", None, "パ"),
         ("part_morning_ext", "パート午前延長", "part_time", "08:45", "13:45", 0.0, 5.0, 0, "パート・午前5時間", None, "パ延"),
+        ("part_time_default", "パートタイム（デフォルト）", "part_time", "08:45", "17:00", 1.0, 7.25, 1, "パート・標準", None, "パ"),
+        ("part_time_tue_special", "パートタイム（火曜特別）", "part_time", "08:45", "16:45", 1.0, 7.0, 1, "パート・火曜日のみ16:45まで", "tuesday", "パ火"),
+        ("full_time_default", "フルタイム（デフォルト）", "full_time", "08:45", "18:45", 2.0, 8.0, 1, "正職員・標準", None, "正"),
     ]
     _execute(
         """

@@ -59,6 +59,24 @@ st.set_page_config(
 # データベース初期化
 init_database()
 
+# ページパスを取得するヘルパー関数
+def get_page_path(page_name):
+    """
+    PyInstallerでビルドされた環境でも動作するページパスを取得
+    
+    Args:
+        page_name: ページのファイル名（例: "1_👥_職員管理.py"）
+    
+    Returns:
+        ページへのパス
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstallerでビルドされた場合
+        return f"pages/{page_name}"
+    else:
+        # 通常の実行の場合
+        return f"pages/{page_name}"
+
 # メインページ
 st.title("📅 シフト作成システム")
 st.markdown("---")
@@ -70,19 +88,19 @@ with col1:
     st.markdown("### 👥 職員管理")
     st.info("職員の登録・編集とスキルスコアの設定を行います。")
     if st.button("職員管理へ", key="btn_employees", width="stretch"):
-        st.switch_page("pages/1_👥_職員管理.py")
+        st.switch_page(get_page_path("1_employee_management.py"))
 
 with col2:
     st.markdown("### 🏖️ 休暇管理")
     st.info("職員の休暇を日付単位で登録します。")
     if st.button("休暇管理へ", key="btn_vacation", width="stretch"):
-        st.switch_page("pages/2_🏖️_休暇管理.py")
+        st.switch_page(get_page_path("2_absence_management.py"))
 
 with col3:
     st.markdown("### 🎯 シフト生成")
     st.success("最適化エンジンでシフトを自動生成します。")
     if st.button("シフト生成へ", key="btn_generate", width="stretch"):
-        st.switch_page("pages/3_🎯_シフト生成.py")
+        st.switch_page(get_page_path("3_shift_generation.py"))
 
 st.markdown("---")
 
@@ -90,7 +108,7 @@ st.markdown("---")
 st.markdown("### 📋 シフト表示")
 st.info("生成されたシフトを確認・編集します。")
 if st.button("シフト表示へ", key="btn_display", width="stretch"):
-    st.switch_page("pages/4_📋_シフト表示.py")
+    st.switch_page(get_page_path("4_shift_display.py"))
 
 st.markdown("---")
 

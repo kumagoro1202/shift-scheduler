@@ -50,14 +50,53 @@ def _check_absence(employee: Employee, date_str: str, time_slot: TimeSlot) -> Op
     return None
 
 
-def _check_employment_pattern(employee: Employee, time_slot: TimeSlot) -> Optional[str]:
+def _check_employment_pattern(
+    employee: Employee, time_slot: TimeSlot, date_str: Optional[str] = None
+) -> Optional[str]:
     """Check if employment pattern allows working in this time slot.
     
     Returns None if allowed, error code if not allowed.
+    
+    For employees with is_pattern_fixed=False (regular employees), checks if
+    any available pattern for the day can cover the time slot.
+    For fixed pattern employees, checks only their registered pattern.
     """
     if not employee.employment_pattern_id:
         return None
     
+    # 正職員で変動パターンの場合、その日に利用可能な全パターンをチェック
+    if not employee.is_pattern_fixed and date_str:
+        from .optimizer import _get_available_patterns_for_day
+        available_patterns = _get_available_patterns_for_day(date_str, employee)
+        
+        # いずれかのパターンで対応可能かチェック
+        if available_patterns:
+            for pattern_id in available_patterns:
+                pattern = get_employment_pattern(pattern_id)
+                if pattern is None:
+                    continue
+                
+                # 午後勤務チェック
+                if time_slot.period == "afternoon" and not pattern.can_work_afternoon:
+                    continue
+                
+                # 時刻チェック
+                try:
+                    slot_start = datetime.strptime(time_slot.start_time, "%H:%M").time()
+                    slot_end = datetime.strptime(time_slot.end_time, "%H:%M").time()
+                    pattern_start = datetime.strptime(pattern.start_time, "%H:%M").time()
+                    pattern_end = datetime.strptime(pattern.end_time, "%H:%M").time()
+                    
+                    # パターンの勤務時間が時間帯をカバーできる
+                    if pattern_start <= slot_start and slot_end <= pattern_end:
+                        return None  # 利用可能
+                except ValueError:
+                    continue
+            
+            # どのパターンでも対応不可
+            return "after_end"
+    
+    # 固定パターンまたはdate_strが指定されていない場合は従来通り
     pattern = get_employment_pattern(employee.employment_pattern_id)
     if pattern is None:
         return "pattern_not_found"
@@ -102,7 +141,7 @@ def is_employee_available(employee: Employee, date_str: str, time_slot: TimeSlot
         return False
     
     # Check employment pattern
-    pattern_check = _check_employment_pattern(employee, time_slot)
+    pattern_check = _check_employment_pattern(employee, time_slot, date_str)
     if pattern_check:
         return False
     
@@ -121,8 +160,13 @@ def _format_absence_reason(absence) -> str:
     return f"{label}{note}"
 
 
-def _format_pattern_error(pattern_check: str, pattern) -> str:
-    """Format employment pattern error as a readable string."""
+def _format_pattern_error(
+    pattern_check: str, pattern, employee: Employee, date_str: Optional[str] = None
+) -> str:
+    """Format employment pattern error as a readable string.
+    
+    For employees with variable patterns, shows the latest available pattern time.
+    """
     if pattern_check == "pattern_not_found":
         return "勤務パターンが見つかりません"
     if pattern_check == "no_afternoon":
@@ -132,6 +176,25 @@ def _format_pattern_error(pattern_check: str, pattern) -> str:
     if pattern_check == "before_start":
         return f"勤務開始前の時間帯です（開始 {pattern.start_time}）"
     if pattern_check == "after_end":
+        # 正職員で変動パターンの場合、最も遅いパターンの時刻を表示
+        if not employee.is_pattern_fixed and date_str:
+            from .optimizer import _get_available_patterns_for_day
+            available_patterns = _get_available_patterns_for_day(date_str, employee)
+            if available_patterns:
+                latest_end = None
+                for pattern_id in available_patterns:
+                    p = get_employment_pattern(pattern_id)
+                    if p:
+                        try:
+                            end_time = datetime.strptime(p.end_time, "%H:%M").time()
+                            if latest_end is None or end_time > latest_end:
+                                latest_end = end_time
+                        except ValueError:
+                            pass
+                if latest_end:
+                    latest_end_str = latest_end.strftime("%H:%M")
+                    return f"勤務終了後の時間帯です（最も遅いパターンの終了 {latest_end_str}）"
+        
         return f"勤務終了後の時間帯です（終了 {pattern.end_time}）"
     return None
 
@@ -157,12 +220,12 @@ def describe_unavailability(employee: Employee, date_str: str, time_slot: TimeSl
         return _format_absence_reason(absence)
     
     # Check employment pattern
-    pattern_check = _check_employment_pattern(employee, time_slot)
+    pattern_check = _check_employment_pattern(employee, time_slot, date_str)
     if not pattern_check:
         return None
     
     pattern = get_employment_pattern(employee.employment_pattern_id) if employee.employment_pattern_id else None
-    return _format_pattern_error(pattern_check, pattern)
+    return _format_pattern_error(pattern_check, pattern, employee, date_str)
 
 
 def available_time_slots(
